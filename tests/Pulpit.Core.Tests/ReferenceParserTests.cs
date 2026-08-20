@@ -24,6 +24,7 @@ public sealed class ReferenceParserTests
     [InlineData("john3:16", "约翰福音 3:16")]            // 英文全称
     [InlineData("jhn3:16", "约翰福音 3:16")]             // 英文缩写
     [InlineData("约３：１６", "约翰福音 3:16")]             // 全角数字与冒号
+    [InlineData("林前3：10", "哥林多前书 3:10")]           // 中文输入法的全角冒号(操作员实况)
     [InlineData("罗 8 : 28", "罗马书 8:28")]             // 空格容错
     [InlineData("约1:1", "约翰福音 1:1")]                // ⚠ 绝不能解析成约翰壹书
     [InlineData("约一3:16", "约翰壹书 3:16")]             // 数字书卷
