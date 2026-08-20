@@ -45,12 +45,30 @@ public sealed record AppConfig
     {
         var notes = new List<string>();
 
-        BandConfig band = Band.Sanitize(notes);
-        TypographyConfig typography = Typography.Sanitize(notes);
-        AnimationConfig animation = Animation.Sanitize(notes);
-        HotkeyConfig hotkeys = Hotkeys.Sanitize(notes);
-        LyricsConfig lyrics = Lyrics.Sanitize(notes);
-        BadgeConfig badge = Badge.Sanitize(notes);
+        // System.Text.Json 不强制不可空注解：手编配置写出 "hotkeys": null 这类**合法 JSON**
+        // 时，对应节就是 null——初始化器帮不上忙。§7 的契约是「非法就用默认值 + 写日志，
+        // 永不抛」，所以先把缺失的节补成默认，再做逐字段夹值。
+        T Section<T>(T? value, string name) where T : class, new()
+        {
+            if (value is not null)
+            {
+                return value;
+            }
+
+            notes.Add($"{name} 为 null，整节改用内置默认值");
+            return new T();
+        }
+
+        BandConfig band = Section(Band, "band").Sanitize(notes);
+        TypographyConfig typography = Section(Typography, "typography").Sanitize(notes);
+        AnimationConfig animation = Section(Animation, "animation").Sanitize(notes);
+        HotkeyConfig hotkeys = Section(Hotkeys, "hotkeys").Sanitize(notes);
+        LyricsConfig lyrics = Section(Lyrics, "lyrics").Sanitize(notes);
+        BadgeConfig badge = Section(Badge, "badge").Sanitize(notes);
+
+        // TextConfig 没有可夹的字段，但同样可能整节为 null——它的 NRE 会延迟到
+        // 直播中第一次投放时才爆，比启动崩溃更糟。
+        TextConfig text = Section(Text, "text");
 
         corrections = notes;
 
@@ -60,6 +78,7 @@ public sealed record AppConfig
             Typography = typography,
             Animation = animation,
             Hotkeys = hotkeys,
+            Text = text,
             Lyrics = lyrics,
             Badge = badge,
         };

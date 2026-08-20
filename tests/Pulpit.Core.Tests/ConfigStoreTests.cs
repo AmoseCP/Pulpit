@@ -124,6 +124,37 @@ public sealed class ConfigStoreTests : IDisposable
     }
 
     /// <summary>
+    /// <c>"hotkeys": null</c> 是合法 JSON——System.Text.Json 不理会不可空注解，
+    /// 反序列化后整节就是 null，属性初始化器帮不上忙。Load 曾在 Sanitize 里对它
+    /// NRE（违反本类「任何输入都不得抛」的核心契约）；<c>"text": null</c> 更糟——
+    /// 没有夹值步骤，曾一路存活到直播中第一次投放才爆。
+    /// </summary>
+    [Fact]
+    public void NullSectionsYieldDefaultsWithoutThrowing()
+    {
+        File.WriteAllText(_path, """
+            {
+              "band": null,
+              "typography": null,
+              "animation": null,
+              "hotkeys": null,
+              "text": null,
+              "lyrics": null,
+              "badge": null
+            }
+            """);
+
+        AppConfig config = Store().Load(out IReadOnlyList<string> notes);
+
+        Assert.NotNull(config.Hotkeys);
+        Assert.Equal("F9", config.Hotkeys.SendZh);
+        Assert.NotNull(config.Text);
+        Assert.False(config.Text.UseRawText);
+        Assert.Equal(0.30, config.Band.HeightPercent);
+        Assert.NotEmpty(notes);
+    }
+
+    /// <summary>
     /// 只写了一个字段的配置文件，其余字段必须保持内置默认值——
     /// 这是「用属性初始化器而不是位置记录」换来的性质。
     /// </summary>
