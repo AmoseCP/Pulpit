@@ -13,7 +13,7 @@
 |---|---|---|
 | — | 数据库 `bible_cuv.db`（和合本简体，31103 节，478 条书卷别名，81 组并节已解析） | ✅ 已就绪 |
 | **M0** | 透明叠加层技术尖刺 | 🟡 **代码已交付，等待真实直播机人工验收** |
-| M1 | 数据层与引用解析（`Pulpit.Core` + 单测） | ⬜ 未开始（被 M0 阻塞） |
+| **M1** | 数据层与引用解析（`Pulpit.Core` + 单测） | 🟡 **代码已交付，等待 Windows 上 `dotnet test`** |
 | M2 | 叠加层渲染 | ⬜ |
 | M3 | 控制窗口与输入（IME 安全） | ⬜ |
 | M4 | 全局热键与分页 | ⬜ |
@@ -32,8 +32,12 @@
 
 ```powershell
 dotnet build Pulpit.sln -c Debug
-dotnet run --project src\Pulpit.App\Pulpit.App.csproj
+dotnet test tests\Pulpit.Core.Tests            # M1 验收：§6 全部用例
+dotnet run --project src\Pulpit.App\Pulpit.App.csproj   # M0 尖刺
 ```
+
+`Pulpit.Core` 与它的测试是**纯 `net8.0`**（不引用任何 WPF/WinForms 类型），
+所以 `dotnet test` 在 macOS / Linux 上也能跑；只有 `Pulpit.App` 必须在 Windows 上构建。
 
 ---
 
@@ -58,3 +62,18 @@ dotnet run --project src\Pulpit.App\Pulpit.App.csproj
 - `app.manifest` — PerMonitorV2 DPI 感知（L14）
 
 M0 **刻意不含**：全局热键（M4）、单实例 Mutex（M5）、任何经文查询逻辑（M1）。
+
+---
+
+## M1 已实现的东西
+
+| 类型 | 职责 |
+|---|---|
+| `TextNormalizer` | 两级归一化。整串只做 NFKC + 去空白（**保留 `-`**，否则 `诗23:1-3` 会变成 `诗23:13`）；书卷片段才做 SCHEMA.md 的完整规则（去 `. - _ ·` + 小写） |
+| `ReferenceParser` | 惰性正则切分书卷/章/节，让「紧跟其后必须是章号+冒号」这个结构自己决定切点——所以 `约1:1` 落在约翰福音、`约翰1书3:16` 与 `1jn3:16` 都能切对 |
+| `BibleRepository` | 只读 SQLite（`Mode=ReadOnly`，持久连接）。范围查询在 SQL 里 `GROUP BY merge_head` 去重 |
+| `ContentBuilder` / `DisplayContent` | `VerseText[]` → `Page[]`，一个并节组一页；翻页**不循环**（M4 验收要求） |
+| `BibleDatabaseException` | 库缺失/损坏/结构不符时的明确异常（M1 验收要求，不能是 `NullReferenceException`） |
+
+测试跑在**真库**上（`bible_cuv.db` 由 csproj 复制到测试输出目录）。用假库测等于什么都没测——
+§6 的每一条期望值都是在这个库上实测得来的。

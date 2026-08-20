@@ -1,0 +1,15 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <PropertyGroup>
+    <TargetFramework>net8.0</TargetFramework>
+    <RootNamespace>Pulpit.Core</RootNamespace>
+    <!-- 刻意是纯 net8.0（不是 net8.0-windows）：本类库不得引用任何
+         WPF / WinForms 类型，这样它在任何平台上都能编译与单测。 -->
+  </PropertyGroup>
+
+  <ItemGroup>
+    <!-- CLAUDE.md：除 SQLite 外不引入第三方 NuGet 包。 -->
+    <PackageReference Include="Microsoft.Data.Sqlite" Version="8.0.8" />
+  </ItemGroup>
+
+</Project>

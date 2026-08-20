@@ -1,0 +1,25 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <PropertyGroup>
+    <TargetFramework>net8.0</TargetFramework>
+    <RootNamespace>Pulpit.Core.Tests</RootNamespace>
+    <IsPackable>false</IsPackable>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <PackageReference Include="Microsoft.NET.Test.Sdk" Version="17.11.0" />
+    <PackageReference Include="xunit" Version="2.9.0" />
+    <PackageReference Include="xunit.runner.visualstudio" Version="2.8.2" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <ProjectReference Include="..\..\src\Pulpit.Core\Pulpit.Core.csproj" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <!-- 测试跑在真库上。§6 的每一条期望值都是在这个库上实测过的结果，
+         用内存假库测等于什么都没测。 -->
+    <None Include="..\..\bible_cuv.db" Link="bible_cuv.db" CopyToOutputDirectory="PreserveNewest" />
+  </ItemGroup>
+
+</Project>
