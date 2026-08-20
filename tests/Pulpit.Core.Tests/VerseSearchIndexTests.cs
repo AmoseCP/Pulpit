@@ -77,7 +77,9 @@ public sealed class VerseSearchIndexTests
         Assert.Null(hit.Reference.EndVerse);
 
         Assert.Equal("约3:16", hit.InputForm);
-        Assert.StartsWith("神爱世人", hit.TextDisplay, StringComparison.Ordinal);
+        // 真库中该节以全角引号「“」开头(和合本原文标点,text_display 保留),
+        // 所以断言"携带正文"用 Contains 而不是 StartsWith。
+        Assert.Contains("神爱世人", hit.TextDisplay, StringComparison.Ordinal);
     }
 
     /// <summary>

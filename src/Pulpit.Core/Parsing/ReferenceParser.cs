@@ -28,8 +28,12 @@ namespace Pulpit.Core.Parsing;
 /// </remarks>
 public sealed class ReferenceParser : IReferenceParser
 {
+    // 书卷片段排除 : , 、 —— 没有任何书卷别名含这三个字符,而惰性的 .*? 会把
+    // 「约3:16,罗8:28」里的「约3:16,罗」整个吞成书卷名,把一句自由文本误判成
+    // 「引用结构但书卷不认识」而报错;正确行为是整串静默走自由文本(§5 三态语义)。
+    // 全角 ， 经 NFKC 折成半角,顿号 、 不折,两个都要列。
     private static readonly Regex Pattern = new(
-        @"^(?<book>.*?)(?<chapter>[0-9]+):(?<verse>[0-9]+)(?:[-–—~](?<end>[0-9]+))?$",
+        @"^(?<book>[^:,、]*?)(?<chapter>[0-9]+):(?<verse>[0-9]+)(?:[-–—~](?<end>[0-9]+))?$",
         RegexOptions.CultureInvariant);
 
     private readonly IBibleRepository _repository;
