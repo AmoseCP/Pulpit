@@ -1,5 +1,7 @@
 # Pulpit
 
+<img src="docs/logo.png" width="120" align="right" alt="Pulpit 标志：红十字与翻开的圣经" />
+
 教会直播用经文投屏工具。副屏以**透明叠加层**显示经文，**不干扰正在放映的 PPT**。
 
 操作员在主屏输入 `约3:16`，按 F9，经文淡入到副屏 PPT 之上；按 F12 淡出。

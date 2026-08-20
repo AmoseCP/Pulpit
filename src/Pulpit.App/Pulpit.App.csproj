@@ -13,6 +13,9 @@
     <!-- L14：PerMonitorV2 DPI 感知，防止换屏后副屏字号被系统拉伸 -->
     <ApplicationManifest>app.manifest</ApplicationManifest>
     <SatelliteResourceLanguages>zh-Hans</SatelliteResourceLanguages>
+    <!-- 教会标志(红十字 + 翻开的圣经),由 docs/logo.png 同源的矢量重绘生成。
+         WPF 窗口标题栏与任务栏默认取 exe 图标,无需逐窗口设置 Icon。 -->
+    <ApplicationIcon>Assets\pulpit.ico</ApplicationIcon>
   </PropertyGroup>
 
   <ItemGroup>
