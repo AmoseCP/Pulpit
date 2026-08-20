@@ -21,8 +21,6 @@ namespace Pulpit.App.Views;
 /// </remarks>
 public partial class BadgeWindow : Window
 {
-    private const double FadeMilliseconds = 200;
-
     private readonly OverlayWindowStyler _styler = new();
 
     private BadgeConfig _badge;
@@ -206,10 +204,12 @@ public partial class BadgeWindow : Window
             return;
         }
 
+        // 时长与判断用同一个来源（_theme.FadeMs）。原先判断用配置、时长用写死的 200ms，
+        // 把 fadeMs 调成 300 时角标仍然 200ms——两个来源迟早会打架。
         var animation = new DoubleAnimation
         {
             To = to,
-            Duration = new Duration(TimeSpan.FromMilliseconds(FadeMilliseconds)),
+            Duration = new Duration(TimeSpan.FromMilliseconds(_theme.FadeMs)),
             FillBehavior = FillBehavior.HoldEnd,
         };
 

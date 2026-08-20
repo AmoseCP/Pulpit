@@ -173,14 +173,16 @@ internal sealed class GlobalHotkeyService : IDisposable
             return;
         }
 
+        // 位置实参，不用命名实参：这个 7 参构造的形参名不值得赌
+        // （classStyle, style, exStyle, x, y, name, parent）。
         _source = new HwndSource(
-            classStyle: 0,
-            style: 0,
-            exStyle: NativeMethods.WS_EX_TOOLWINDOW,
-            x: 0,
-            y: 0,
-            name: "PulpitHotkeySink",
-            parent: IntPtr.Zero);
+            0,                                  // classStyle
+            0,                                  // style（不含 WS_VISIBLE，所以不可见）
+            NativeMethods.WS_EX_TOOLWINDOW,     // exStyle：确保不进 Alt+Tab
+            0,                                  // x
+            0,                                  // y
+            "PulpitHotkeySink",                 // name
+            IntPtr.Zero);                       // parent
 
         _source.AddHook(WndProc);
     }

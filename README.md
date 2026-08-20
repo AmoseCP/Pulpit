@@ -34,7 +34,16 @@
 需要 **.NET 8 SDK**，**仅 Windows x64**。WPF 无法在 macOS/Linux 上构建或运行
 （这是 L1 锁定决策的直接结果，不是疏漏；见 `DEVELOPMENT_PLAN.md` §9 明确的非目标）。
 
+> ⚠ **首次编译先读 [`docs/首次编译检查清单.md`](docs/首次编译检查清单.md)。**
+> `Pulpit.App` 的 WPF 代码从未经过编译器（开发在 macOS 上进行），清单里列了
+> 12 处最可能报错的外部 API 调用、位置、以及万一报错怎么改。
+> 建议先单独编译 `Pulpit.Core` 并 `dotnet test`——它在任何平台都能过，
+> 过了就说明剩下的错全在 App 层。
+
 ```powershell
+dotnet build src\Pulpit.Core\Pulpit.Core.csproj    # 先把 Core 排除掉
+dotnet test  tests\Pulpit.Core.Tests
+
 dotnet build Pulpit.sln -c Debug
 dotnet test tests\Pulpit.Core.Tests                      # Core 验收（§6 全部用例 + 配置 + 热键白名单）
 dotnet run --project src\Pulpit.App\Pulpit.App.csproj    # 跑起来
@@ -63,6 +72,7 @@ dotnet run --project src\Pulpit.App\Pulpit.App.csproj    # 跑起来
 | `CLAUDE.md` | 给 AI 代理的项目约定；「最容易做错的五件事」 |
 | `docs/M0-验收清单.md` | M0 现场验收表，含帧率判读标准与失败回报格式 |
 | `docs/快速上手卡.md` | **给志愿者的一页 A4**：五个键、怎么打经文、出错怎么看 |
+| `docs/首次编译检查清单.md` | **首次 `dotnet build` 前先读这个**：按可疑度排序的 12 处外部 API 风险点，每条带位置与退路 |
 
 ---
 

@@ -29,7 +29,8 @@ internal sealed class SingleInstanceGuard : IDisposable
     {
         guard = null;
 
-        var mutex = new Mutex(initiallyOwned: true, MutexName, out bool createdNew);
+        // 位置实参：形参名不值得赌（bool initiallyOwned, string name, out bool createdNew）。
+        var mutex = new Mutex(true, MutexName, out bool createdNew);
 
         if (createdNew)
         {
