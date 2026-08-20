@@ -76,6 +76,11 @@ dotnet run --project src\Pulpit.App\Pulpit.App.csproj    # 跑起来
 安装版的编译需要 Inno Setup 6（`winget install --id JRSoftware.InnoSetup -e`），
 缺了会跳过安装版、Portable 照常产出。版本号唯一来源是 `Pulpit.App.csproj` 的 `<Version>`。
 
+两个版本都是**零外部依赖**：自包含 .NET 运行时，SQLite 原生库为静态 CRT，
+WPF 所需的 VC 运行库随包自解压——目标机只需 Windows 10 x64 (1607) 或更新。
+唯一的现场提示：exe 未做代码签名，**经网络下载**的副本首次运行会弹 SmartScreen
+（「更多信息」→「仍要运行」即可，说明.txt 里有写）；U 盘拷贝通常不触发。
+
 `Pulpit.Core` 与它的测试是**纯 `net8.0`**（不引用任何 WPF/WinForms 类型），
 所以 `dotnet test` 在 macOS / Linux 上也能跑；只有 `Pulpit.App` 必须在 Windows 上构建。
 

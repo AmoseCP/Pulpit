@@ -35,11 +35,17 @@ Copy-Item "$repo\docs\快速上手卡.md" $staging
 Pulpit $version - Portable 版
 ==============================
 
-双击 Pulpit.exe 即可使用,无需安装、无需 .NET 运行时。
+双击 Pulpit.exe 即可使用,无需安装、无需 .NET 或任何运行库。
+系统要求:Windows 10 x64(1607)或更新。
 
 - 配置、经文库与日志在:%LOCALAPPDATA%\Pulpit\
   (首次运行自动创建;换电脑时把这个文件夹一并拷走即可保留设置)
 - 操作说明见:快速上手卡.md
+
+【首次双击提示「Windows 已保护你的电脑」怎么办】
+这是 SmartScreen 对"从网络下载的未签名程序"的例行提示,不是病毒警告。
+处理:点「更多信息」→「仍要运行」;或先右键 zip 文件 → 属性 →
+勾选「解除锁定」→ 确定,再解压。U 盘拷贝的一般不会出现此提示。
 "@ | Set-Content "$staging\说明.txt" -Encoding utf8
 $zip = "$repo\publish\Pulpit-$version-portable.zip"
 if (Test-Path $zip) { Remove-Item $zip -Force }
