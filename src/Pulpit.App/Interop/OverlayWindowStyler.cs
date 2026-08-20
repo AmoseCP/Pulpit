@@ -94,9 +94,11 @@ internal sealed class OverlayWindowStyler : IDisposable
     }
 
     /// <summary>
-    /// L3：定位到目标屏的带状区域。<paramref name="heightPercent"/> 为屏高占比，
-    /// <paramref name="verticalAnchor"/> 取 <c>bottom</c> / <c>top</c> / <c>center</c>
-    /// （config.band.verticalAnchor，已经过 Sanitize）。
+    /// 定位到目标屏。<paramref name="heightPercent"/> 为屏高占比，
+    /// <paramref name="verticalAnchor"/> 取 <c>bottom</c> / <c>top</c> / <c>center</c> /
+    /// <c>fullscreen</c>（config.band.verticalAnchor，已经过 Sanitize）。
+    /// L3 默认仍是带状；fullscreen 是 2026-08-20 修订新增的可选档，覆盖整屏并忽略
+    /// <paramref name="heightPercent"/>——软件渲染下全屏淡入较重，逃生口是 fadeMs=0。
     /// </summary>
     internal void PositionOnScreen(
         System.Windows.Forms.Screen screen, double heightPercent, string verticalAnchor = "bottom")
@@ -107,7 +109,9 @@ internal sealed class OverlayWindowStyler : IDisposable
         }
 
         System.Drawing.Rectangle b = screen.Bounds;   // 物理像素
-        int height = (int)Math.Round(b.Height * heightPercent);
+        bool fullscreen = string.Equals(verticalAnchor, "fullscreen", StringComparison.Ordinal);
+
+        int height = fullscreen ? b.Height : (int)Math.Round(b.Height * heightPercent);
         if (height < 1)
         {
             height = 1;
@@ -116,7 +120,7 @@ internal sealed class OverlayWindowStyler : IDisposable
         int x = b.Left;
         int y = verticalAnchor switch
         {
-            "top" => b.Top,
+            "top" or "fullscreen" => b.Top,
             "center" => b.Top + (b.Height - height) / 2,
             _ => b.Bottom - height,
         };

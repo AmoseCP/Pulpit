@@ -69,15 +69,20 @@ public sealed class ConfigTests
         Assert.Equal(4, corrections.Count);
     }
 
-    /// <summary>P1-3 扩展：垂直位置第三档「居中」是合法值，大小写不敏感、不产生修正。</summary>
-    [Fact]
-    public void CenterAnchorIsLegal()
+    /// <summary>
+    /// P1-3 扩展：垂直位置的「居中」「全屏」是合法值，大小写不敏感、不产生修正。
+    /// fullscreen 是 L3 的 2026-08-20 修订新增的可选档（默认仍是带状）。
+    /// </summary>
+    [Theory]
+    [InlineData("Center", "center")]
+    [InlineData("FullScreen", "fullscreen")]
+    public void CenterAndFullscreenAnchorsAreLegal(string written, string expected)
     {
-        var config = new AppConfig { Band = new BandConfig { VerticalAnchor = "Center" } };
+        var config = new AppConfig { Band = new BandConfig { VerticalAnchor = written } };
 
         AppConfig sanitized = config.Sanitize(out IReadOnlyList<string> corrections);
 
-        Assert.Equal("center", sanitized.Band.VerticalAnchor);
+        Assert.Equal(expected, sanitized.Band.VerticalAnchor);
         Assert.Empty(corrections);
     }
 

@@ -317,7 +317,10 @@
                             <RadioButton x:Name="AnchorCenter" Content="居中" GroupName="Anchor"
                                          Click="OnAppearanceToggled" Margin="0,0,16,0" />
                             <RadioButton x:Name="AnchorTop" Content="贴顶" GroupName="Anchor"
-                                         Click="OnAppearanceToggled" />
+                                         Click="OnAppearanceToggled" Margin="0,0,16,0" />
+                            <RadioButton x:Name="AnchorFull" Content="全屏" GroupName="Anchor"
+                                         Click="OnAppearanceToggled"
+                                         ToolTip="覆盖整块副屏（忽略带状高度）。软件渲染下全屏淡入较重，卡顿就把淡入时长设为 0。" />
                         </StackPanel>
 
                         <TextBlock Grid.Row="5" Grid.Column="0" Text="字体" VerticalAlignment="Center" Margin="0,0,10,10" />

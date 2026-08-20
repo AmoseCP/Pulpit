@@ -632,10 +632,13 @@ public partial class ControlWindow : Window
                 _config.Band.VerticalAnchor, "top", StringComparison.OrdinalIgnoreCase);
             bool center = string.Equals(
                 _config.Band.VerticalAnchor, "center", StringComparison.OrdinalIgnoreCase);
+            bool full = string.Equals(
+                _config.Band.VerticalAnchor, "fullscreen", StringComparison.OrdinalIgnoreCase);
 
             AnchorTop.IsChecked = top;
             AnchorCenter.IsChecked = center;
-            AnchorBottom.IsChecked = !top && !center;
+            AnchorFull.IsChecked = full;
+            AnchorBottom.IsChecked = !top && !center && !full;
 
             LoadFontList();
 
@@ -749,6 +752,7 @@ public partial class ControlWindow : Window
                 BackgroundOpacity = OpacitySlider.Value,
                 VerticalAnchor = AnchorTop.IsChecked == true ? "top"
                     : AnchorCenter.IsChecked == true ? "center"
+                    : AnchorFull.IsChecked == true ? "fullscreen"
                     : "bottom",
             },
             Typography = _config.Typography with
