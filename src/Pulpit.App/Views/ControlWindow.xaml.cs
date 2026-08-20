@@ -11,8 +11,6 @@ using System.Windows.Threading;
 using Pulpit.App.Diagnostics;
 using Pulpit.Core.Config;
 using Pulpit.Core.Content;
-using Pulpit.Core.Data;
-using Pulpit.Core.Parsing;
 
 namespace Pulpit.App.Views;
 
@@ -35,8 +33,7 @@ namespace Pulpit.App.Views;
 public partial class ControlWindow : Window
 {
     private readonly OverlayWindow _overlay;
-    private readonly IBibleRepository? _repository;
-    private readonly IReferenceParser? _parser;
+    private readonly ContentComposer _composer;
     private readonly AppConfig _config;
     private readonly string? _databaseVersion;
     private readonly DispatcherTimer _poll;
@@ -45,20 +42,20 @@ public partial class ControlWindow : Window
 
     private FadeMeasurement _lastFade;
     private bool _hasFadeSample;
+    private bool _useRawText;
 
     public ControlWindow(
         OverlayWindow overlay,
-        IBibleRepository? repository,
-        IReferenceParser? parser,
+        ContentComposer composer,
         AppConfig config,
         string? databaseVersion,
         string? databaseError)
     {
         _overlay = overlay ?? throw new ArgumentNullException(nameof(overlay));
-        _repository = repository;
-        _parser = parser;
+        _composer = composer ?? throw new ArgumentNullException(nameof(composer));
         _config = config ?? throw new ArgumentNullException(nameof(config));
         _databaseVersion = databaseVersion;
+        _useRawText = config.Text.UseRawText;
 
         InitializeComponent();
 
@@ -199,62 +196,27 @@ public partial class ControlWindow : Window
 
     private void Send(string input)
     {
-        DisplayContent? content = BuildContent(input, out string? error);
+        ComposeResult result = _composer.Compose(input, _useRawText);
 
-        if (error is not null)
+        if (result.HasError)
         {
             // P0-10：报错只出现在控制窗口，副屏保持原状，绝不上副屏。
-            ShowMode("✗ " + error, ModeLevel.Error);
-            AppLog.Info($"投放被拒：{input} → {error}");
+            ShowMode("✗ " + result.Error, ModeLevel.Error);
+            AppLog.Info($"投放被拒：{input} → {result.Error}");
             return;
         }
 
-        if (content is null)
+        if (result.IsEmpty)
         {
             ShowMode("没有可投放的内容", ModeLevel.Hint);
             return;
         }
 
+        DisplayContent content = result.Content!;
+
         _overlay.Show(content);
         AppLog.Info($"投放：{input}（{content.Kind}，{content.PageCount} 页）");
         RefreshDiagnostics();
-    }
-
-    /// <summary>
-    /// 把输入变成待投内容。返回 null 且 <paramref name="error"/> 非空 = 该报错；
-    /// 两者都为 null = 没有可投的东西（空输入）。
-    /// </summary>
-    private DisplayContent? BuildContent(string input, out string? error)
-    {
-        error = null;
-
-        if (string.IsNullOrWhiteSpace(input))
-        {
-            return null;
-        }
-
-        if (_parser is not null && _repository is not null
-            && _parser.TryParse(input, out VerseRef? reference, out error))
-        {
-            IReadOnlyList<VerseText> verses = _repository.Lookup(reference);
-
-            if (verses.Count == 0)
-            {
-                // 解析通过、章节也在范围内，却查不到文本——库出了问题，不该静默上屏。
-                error = "该节在库中查不到文本";
-                return null;
-            }
-
-            return ContentBuilder.FromVerses(reference, verses, _config.Text.UseRawText);
-        }
-
-        if (error is not null)
-        {
-            return null;
-        }
-
-        // 不是引用格式 → 原样上屏（P0-4）。
-        return ContentBuilder.FromFreeText(input);
     }
 
     private void OnSample(object sender, RoutedEventArgs e)
@@ -322,6 +284,10 @@ public partial class ControlWindow : Window
     /// <summary>
     /// M3 验收：输入 <c>约3:16</c> 显示「经文」，输入 <c>欢迎新朋友</c> 显示「自由文本」。
     /// </summary>
+    /// <remarks>
+    /// 每次按键都走一遍 <see cref="ContentComposer"/>——判定逻辑与真正投放时**完全同一条路径**，
+    /// 所以模式指示上写什么，按 F9 就一定得到什么。两套判定迟早会分叉。
+    /// </remarks>
     private void RefreshMode()
     {
         string input = InputBox.Text;
@@ -335,40 +301,43 @@ public partial class ControlWindow : Window
 
         if (string.IsNullOrWhiteSpace(input))
         {
-            ShowMode("输入经文引用（约3:16 / 罗8:28 / 诗23:1-6）或任意文字", ModeLevel.Hint);
+            ShowMode("输入经文引用（约3:16 / 诗23:1-6 / 约3:16;罗8:28）或任意文字", ModeLevel.Hint);
             return;
         }
 
-        if (_parser is null || _repository is null)
+        if (!_composer.ScriptureAvailable)
         {
             ShowMode("自由文本 → 原样上屏（经文库不可用）", ModeLevel.Warning);
             return;
         }
 
-        if (_parser.TryParse(input, out VerseRef? reference, out string? error))
+        ComposeResult result = _composer.Compose(input, _useRawText);
+
+        if (result.HasError)
         {
-            IReadOnlyList<VerseText> verses = _repository.Lookup(reference);
-
-            if (verses.Count == 0)
-            {
-                ShowMode("✗ 该节在库中查不到文本", ModeLevel.Error);
-                return;
-            }
-
-            string label = verses[0].Label;
-            string pages = verses.Count > 1 ? $"，{verses.Count} 页" : string.Empty;
-
-            ShowMode($"经文 → {label}{pages}", ModeLevel.Scripture);
+            ShowMode("✗ " + result.Error, ModeLevel.Error);
             return;
         }
 
-        if (error is not null)
+        if (result.IsEmpty)
         {
-            ShowMode("✗ " + error, ModeLevel.Error);
+            ShowMode("输入经文引用或任意文字", ModeLevel.Hint);
             return;
         }
 
-        ShowMode("自由文本 → 原样上屏", ModeLevel.FreeText);
+        DisplayContent content = result.Content!;
+
+        if (content.Kind == ContentKind.FreeText)
+        {
+            ShowMode("自由文本 → 原样上屏", ModeLevel.FreeText);
+            return;
+        }
+
+        // 连续引用时把每一处都列出来：约翰福音 3:16 + 罗马书 8:28
+        string label = string.Join(" + ", content.SourceLabels);
+        string pages = content.HasMultiplePages ? $"，{content.PageCount} 页" : string.Empty;
+
+        ShowMode($"经文 → {label}{pages}", ModeLevel.Scripture);
     }
 
     // ================= 屏幕 =================
@@ -537,9 +506,9 @@ public partial class ControlWindow : Window
                 ? $"页：{content.Index + 1}/{content.PageCount}"
                 : "页：单页";
 
-        StatusDatabase.Text = _repository is null
+        StatusDatabase.Text = !_composer.ScriptureAvailable
             ? "库：不可用"
-            : $"库：CUV v{_databaseVersion ?? "?"}";
+            : $"库：CUV v{_databaseVersion ?? "?"}{(_useRawText ? "（原文）" : string.Empty)}";
 
         StatusIme.Text = IsComposing ? "输入法：组合中" : "输入法：待机";
         StatusHotkeys.Text = HotkeyStatus;

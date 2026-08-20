@@ -118,6 +118,7 @@
                             <Button Content="申30:9 (106字)" Click="OnSample" Tag="申30:9" MinWidth="120" />
                             <Button Content="诗23:1-6 (6页)" Click="OnSample" Tag="诗23:1-6" MinWidth="120" />
                             <Button Content="民1:21 (并节)" Click="OnSample" Tag="民1:21" MinWidth="120" />
+                            <Button Content="约3:16;罗8:28 (连续)" Click="OnSample" Tag="约3:16;罗8:28" MinWidth="150" />
                             <Button Content="测试 (2字)" Click="OnSample" Tag="测试" MinWidth="100" Margin="0" />
                         </StackPanel>
                     </StackPanel>

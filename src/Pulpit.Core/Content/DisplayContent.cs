@@ -31,8 +31,27 @@ public sealed class DisplayContent
 
     public int Index { get; set; }
 
-    /// <summary>原始引用，供 F10 换语言时重查（L13：v1 无英文库，但代码路径必须存在）。</summary>
-    public VerseRef? Source { get; init; }
+    /// <summary>
+    /// 本次投放涉及的全部引用，按输入顺序。自由文本时为空。
+    /// </summary>
+    /// <remarks>
+    /// P1-5 连续引用（<c>约3:16;罗8:28</c>）之后一次投放可能有多处引用，
+    /// 所以权威字段是这个列表；<see cref="Source"/> 退化为「恰好只有一处」时的便捷访问。
+    /// F10 换语言要重查时用本列表。
+    /// </remarks>
+    public IReadOnlyList<VerseRef> Sources { get; init; } = [];
+
+    /// <summary>
+    /// 每一处引用的出处标签，与 <see cref="Sources"/> 一一对应。
+    /// 供控制窗口的模式指示显示「约翰福音 3:16 + 罗马书 8:28」。
+    /// </summary>
+    public IReadOnlyList<string> SourceLabels { get; init; } = [];
+
+    /// <summary>
+    /// 恰好只有一处引用时返回它，否则返回 null（自由文本、或多处引用）。
+    /// 保留此成员是为了兼容 §5 的契约。
+    /// </summary>
+    public VerseRef? Source => Sources.Count == 1 ? Sources[0] : null;
 
     public int PageCount => Pages.Count;
 

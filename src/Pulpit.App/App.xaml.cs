@@ -8,6 +8,7 @@ using Pulpit.App.Diagnostics;
 using Pulpit.App.Interop;
 using Pulpit.App.Views;
 using Pulpit.Core.Config;
+using Pulpit.Core.Content;
 using Pulpit.Core.Data;
 using Pulpit.Core.Parsing;
 
@@ -66,7 +67,11 @@ public partial class App : System.Windows.Application
         _repository = OpenRepository(out string? databaseError);
         string? databaseVersion = _repository?.SchemaVersion;
 
-        ReferenceParser? parser = _repository is null ? null : new ReferenceParser(_repository);
+        // 解析 + 查询 + 三态判定全在 Core 的 ContentComposer 里；两个参数都可为 null，
+        // 经文库打不开时它会让一切输入走自由文本（该降级路径有单测盯着）。
+        var composer = new ContentComposer(
+            _repository,
+            _repository is null ? null : new ReferenceParser(_repository));
 
         _overlay = new OverlayWindow(_config);
 
@@ -74,7 +79,7 @@ public partial class App : System.Windows.Application
         _overlay.Show();
 
         _control = new ControlWindow(
-            _overlay, _repository, parser, _config, databaseVersion, databaseError);
+            _overlay, composer, _config, databaseVersion, databaseError);
         _control.TargetScreenChanged += OnTargetScreenChanged;
         _control.Closed += OnControlClosed;
         _control.Show();

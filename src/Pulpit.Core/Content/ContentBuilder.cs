@@ -4,6 +4,35 @@ using Pulpit.Core.Data;
 
 namespace Pulpit.Core.Content;
 
+/// <summary>一处已解析并查到文本的引用。</summary>
+public sealed record ResolvedReference(VerseRef Reference, IReadOnlyList<VerseText> Verses)
+{
+    /// <summary>
+    /// 整处引用的出处标签：<c>约翰福音 3:16</c> / <c>民数记 1:20-21</c> / <c>诗篇 23:1-3</c>。
+    /// </summary>
+    /// <remarks>
+    /// 跨多节时用**首节的 merge_head 到末节的 merge_last**，而不是原始输入里的节号——
+    /// 输入 <c>诗8:6</c> 时真实范围是 6-8（并节），标签必须反映真实范围。
+    /// </remarks>
+    public string Label
+    {
+        get
+        {
+            if (Verses.Count == 0)
+            {
+                return string.Empty;
+            }
+
+            VerseText first = Verses[0];
+            VerseText last = Verses[^1];
+
+            return first.MergeHead == last.MergeLast
+                ? first.Label
+                : $"{first.BookNameZh} {first.Chapter}:{first.MergeHead}-{last.MergeLast}";
+        }
+    }
+}
+
 /// <summary><c>VerseText[]</c> → <c>Page[]</c>。</summary>
 public static class ContentBuilder
 {
@@ -34,12 +63,55 @@ public static class ContentBuilder
                 Body: useRawText ? verse.TextRaw : verse.TextDisplay));
         }
 
+        var resolved = new ResolvedReference(source, verses);
+
         return new DisplayContent
         {
             Kind = ContentKind.Scripture,
             Pages = pages,
             Index = 0,
-            Source = source,
+            Sources = [source],
+            SourceLabels = [resolved.Label],
+        };
+    }
+
+    /// <summary>
+    /// 多处引用合成一次投放（P1-5）。页序即输入序，每处引用贡献自己的若干页。
+    /// </summary>
+    /// <remarks>
+    /// **刻意不做去重**：操作员写 <c>约3:16;约3:16</c> 就出两页。
+    /// 重复很可能是有意的（同一节前后各念一次），而静默吞掉一处引用比多出一页更难察觉。
+    /// </remarks>
+    public static DisplayContent FromReferences(
+        IReadOnlyList<ResolvedReference> resolved,
+        bool useRawText = false)
+    {
+        ArgumentNullException.ThrowIfNull(resolved);
+
+        var pages = new List<Page>();
+        var sources = new List<VerseRef>(resolved.Count);
+        var labels = new List<string>(resolved.Count);
+
+        foreach (ResolvedReference item in resolved)
+        {
+            sources.Add(item.Reference);
+            labels.Add(item.Label);
+
+            foreach (VerseText verse in item.Verses)
+            {
+                pages.Add(new Page(
+                    Label: verse.Label,
+                    Body: useRawText ? verse.TextRaw : verse.TextDisplay));
+            }
+        }
+
+        return new DisplayContent
+        {
+            Kind = ContentKind.Scripture,
+            Pages = pages,
+            Index = 0,
+            Sources = sources,
+            SourceLabels = labels,
         };
     }
 
@@ -54,7 +126,6 @@ public static class ContentBuilder
             Kind = ContentKind.FreeText,
             Pages = [new Page(string.Empty, text ?? string.Empty)],
             Index = 0,
-            Source = null,
         };
     }
 }
