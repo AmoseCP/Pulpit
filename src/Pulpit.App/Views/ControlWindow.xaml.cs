@@ -100,6 +100,7 @@ public partial class ControlWindow : Window
         RefreshScreens();
         RefreshMode();
         LogPathText.Text = "日志：" + AppLog.CurrentLogPath;
+        AboutVersionText.Text = $"Pulpit v{UpdateChecker.CurrentVersion}";
 
         _poll = new DispatcherTimer(DispatcherPriority.Background)
         {
@@ -620,6 +621,63 @@ public partial class ControlWindow : Window
             : first.Label;
         InputPreviewText.Text = first.Body;
         InputPreviewPanel.Visibility = Visibility.Visible;
+    }
+
+    // ================= 关于与更新（⑨）=================
+
+    /// <summary>
+    /// 手动检查更新——§9「不联网」的 2026-08-20 修订：全软件唯一的网络行为，
+    /// 只在操作员点击时发生，绝不在启动时或后台自动执行。失败只写状态行与日志，
+    /// 不弹框、不影响任何功能。
+    /// </summary>
+    private async void OnCheckUpdate(object sender, RoutedEventArgs e)
+    {
+        CheckUpdateButton.IsEnabled = false;
+
+        try
+        {
+            UpdateStatusText.Text = "正在检查…";
+            UpdateInfo? update = await UpdateChecker.CheckAsync();
+
+            if (update is null)
+            {
+                UpdateStatusText.Text = $"已是最新版本（v{UpdateChecker.CurrentVersion}）。";
+                return;
+            }
+
+            var progress = new Progress<double>(p =>
+                UpdateStatusText.Text = $"发现新版本 v{update.Version}，下载中 {p:P0}…");
+            UpdateStatusText.Text = $"发现新版本 v{update.Version}（{update.SizeBytes / 1048576.0:F0} MB），下载中…";
+            string installer = await UpdateChecker.DownloadAsync(update, progress);
+
+            UpdateStatusText.Text = $"v{update.Version} 已下载。";
+            MessageBoxResult choice = MessageBox.Show(
+                this,
+                $"新版本 v{update.Version} 已下载完成。\n\n现在启动安装程序吗？\n"
+                + "安装时会请求关闭 Pulpit，装完重新打开即是新版本，所有设置保留。\n\n"
+                + "⚠ 请不要在直播进行中更新。",
+                "Pulpit 更新",
+                MessageBoxButton.YesNo,
+                MessageBoxImage.Question);
+
+            if (choice == MessageBoxResult.Yes)
+            {
+                UpdateChecker.LaunchInstaller(installer);
+            }
+            else
+            {
+                UpdateStatusText.Text = $"安装包已保存，稍后可手动运行：{installer}";
+            }
+        }
+        catch (Exception ex)
+        {
+            AppLog.Error("检查更新失败。", ex);
+            UpdateStatusText.Text = "检查更新失败：网络不可用或 GitHub 无法访问。不影响正常使用。";
+        }
+        finally
+        {
+            CheckUpdateButton.IsEnabled = true;
+        }
     }
 
     // ================= 外观（P1-3）=================

@@ -48,6 +48,7 @@
                     <RowDefinition Height="Auto" />
                     <RowDefinition Height="Auto" />
                     <RowDefinition Height="Auto" />
+                    <RowDefinition Height="Auto" />
                 </Grid.RowDefinitions>
 
                 <!-- 数据库告警条：仅在经文库打不开时出现 -->
@@ -400,6 +401,24 @@
                                    Foreground="#FF225522" />
                         <TextBlock x:Name="LogPathText" Style="{StaticResource Mono}"
                                    Foreground="#FF666666" FontSize="11" Margin="0,6,0,0" />
+                    </StackPanel>
+                </Expander>
+
+                <!-- ⑨ 关于:版本 / 作者 / 免责声明 / 检查更新。
+                     「检查更新」是全软件唯一的联网行为,且只在手动点击时发生
+                     (§9 不联网的 2026-08-20 修订,DEVELOPMENT_PLAN §11 第 15 条)。 -->
+                <Expander Grid.Row="9" Header="⑨ 关于与更新" Margin="0,0,0,10">
+                    <StackPanel Margin="4,8,0,0">
+                        <TextBlock x:Name="AboutVersionText" FontWeight="SemiBold" Margin="0,0,0,2" />
+                        <TextBlock Margin="0,0,0,8" Text="作者：@amoseding2025 · 为教会直播事工开发" />
+                        <TextBlock TextWrapping="Wrap" Foreground="#FF666666" FontSize="12" Margin="0,0,0,10"
+                                   Text="免责声明：本软件按「现状」免费提供，不作任何明示或默示的担保；因使用本软件导致的任何直接或间接损失，作者不承担责任。经文文本为和合本（公有领域）。本软件不收集任何数据、从不自动联网；唯一的网络行为是您手动点击下方「检查更新」。" />
+                        <StackPanel Orientation="Horizontal">
+                            <Button x:Name="CheckUpdateButton" Content="检查更新" Click="OnCheckUpdate"
+                                    MinWidth="110" />
+                            <TextBlock x:Name="UpdateStatusText" VerticalAlignment="Center"
+                                       Margin="12,0,0,0" TextWrapping="Wrap" MaxWidth="480" />
+                        </StackPanel>
                     </StackPanel>
                 </Expander>
             </Grid>
