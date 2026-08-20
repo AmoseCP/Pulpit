@@ -1,9 +1,14 @@
 using System;
+using System.Collections.Generic;
+using System.IO;
 using System.Threading.Tasks;
 using System.Windows;
 using System.Windows.Threading;
 using Pulpit.App.Diagnostics;
 using Pulpit.App.Views;
+using Pulpit.Core.Config;
+using Pulpit.Core.Data;
+using Pulpit.Core.Parsing;
 
 namespace Pulpit.App;
 
@@ -11,6 +16,7 @@ public partial class App : System.Windows.Application
 {
     private OverlayWindow? _overlay;
     private ControlWindow? _control;
+    private BibleRepository? _repository;
 
     protected override void OnStartup(StartupEventArgs e)
     {
@@ -22,16 +28,51 @@ public partial class App : System.Windows.Application
 
         base.OnStartup(e);
 
-        AppLog.Info("Pulpit M0 尖刺启动。");
+        AppLog.Info("Pulpit 启动。");
 
-        _overlay = new OverlayWindow();
+        // M5 会换成从 %LOCALAPPDATA%\Pulpit\config.json 读取；M2 阶段先用内置默认值。
+        AppConfig config = new AppConfig().Sanitize(out IReadOnlyList<string> corrections);
+        foreach (string note in corrections)
+        {
+            AppLog.Warn("配置项被修正：" + note);
+        }
+
+        _repository = OpenRepository(out string? databaseError);
+
+        ReferenceParser? parser = _repository is null ? null : new ReferenceParser(_repository);
+
+        _overlay = new OverlayWindow(config);
 
         // ShowActivated=False 已在 XAML 声明；Show() 不会夺取焦点。
         _overlay.Show();
 
-        _control = new ControlWindow(_overlay);
+        _control = new ControlWindow(_overlay, _repository, parser, config, databaseError);
         _control.Closed += OnControlClosed;
         _control.Show();
+    }
+
+    /// <summary>
+    /// 打开经文库。失败**不阻止启动**——叠加层与自由文本仍然可用，
+    /// 错误信息交给控制窗口显示（副屏上绝不出现错误信息）。
+    /// </summary>
+    private static BibleRepository? OpenRepository(out string? error)
+    {
+        error = null;
+
+        string path = Path.Combine(AppContext.BaseDirectory, "Assets", "bible_cuv.db");
+
+        try
+        {
+            var repository = new BibleRepository(path);
+            AppLog.Info($"经文库已打开：{path}（schema_version={repository.SchemaVersion}）");
+            return repository;
+        }
+        catch (BibleDatabaseException ex)
+        {
+            error = ex.Message;
+            AppLog.Error("经文库打开失败，经文查询不可用（自由文本仍可用）。", ex);
+            return null;
+        }
     }
 
     private void OnControlClosed(object? sender, EventArgs e)
@@ -41,6 +82,8 @@ public partial class App : System.Windows.Application
         // 只有此刻才允许叠加层真正关闭（L4）。
         _overlay?.AllowCloseOnShutdown();
         _overlay?.Close();
+
+        _repository?.Dispose();
 
         Shutdown();
     }

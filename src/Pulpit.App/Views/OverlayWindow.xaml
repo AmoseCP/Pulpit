@@ -17,37 +17,52 @@
         TextOptions.TextRenderingMode="Grayscale">
 
     <!--
-      RootLayer 的 Opacity 是淡入淡出的唯一动画目标。
-      不动画 Window.Opacity：分层窗口整窗改透明度会让整块表面重新提交，
-      带状区域内元素级动画的开销更可控（L3 已把面积限制在约 1920×324）。
+      字体、字号、颜色、内边距全部由 OverlayTheme 在代码里赋值（配置驱动）。
+      XAML 里只留结构与中性默认值，避免首帧闪一下未套样式的内容。
+
+      RootLayer.Opacity 是淡入淡出的唯一动画目标：分层窗口整窗改透明度会让
+      整块表面重新提交，元素级动画在带状区域（约 1920×324）上开销更可控。
     -->
     <Grid x:Name="RootLayer" Opacity="0">
+        <Border x:Name="BandBackground" Background="#B8000000">
+            <Grid x:Name="BandPadding">
+                <Grid.RowDefinitions>
+                    <RowDefinition Height="*" />
+                    <!--
+                      页脚行高由代码写成**固定值**（MaxFontSize × LabelScale × 1.6），
+                      不用 Auto。用 Auto 会形成循环：出处标签字号 = 正文字号的 40%，
+                      而正文字号又由「正文可用高度 = 总高 − 页脚高」二分算出来。
+                      固定预留把这个环打断，正文可用高度与字号无关。
+                    -->
+                    <RowDefinition x:Name="FooterRow" Height="0" />
+                </Grid.RowDefinitions>
 
-        <!-- 半透明黑底。#B8 = 184/255 ≈ 0.72，对应 config.band.backgroundOpacity 默认值 -->
-        <Border Background="#B8000000">
-            <Grid Margin="64,18,64,18">
-
-                <!--
-                  Stretch=Uniform + StretchDirection=DownOnly：
-                  短内容保持 BodyText 的字号上限（不会把「测试」两个字撑满整条带），
-                  长内容才等比缩小。M2 会把字号上限做成配置项。
-                -->
-                <Viewbox Stretch="Uniform"
-                         StretchDirection="DownOnly"
-                         HorizontalAlignment="Center"
-                         VerticalAlignment="Center">
+                <!-- 正文。BodyHost 的实际尺寸就是二分搜索的目标框。 -->
+                <Grid x:Name="BodyHost" Grid.Row="0" ClipToBounds="True">
                     <TextBlock x:Name="BodyText"
-                               Text="测试"
-                               FontFamily="Microsoft YaHei UI, Microsoft YaHei, SimHei"
-                               FontWeight="SemiBold"
-                               FontSize="72"
                                Foreground="White"
+                               TextWrapping="Wrap"
                                TextAlignment="Center"
-                               TextWrapping="NoWrap" />
-                </Viewbox>
+                               HorizontalAlignment="Center"
+                               VerticalAlignment="Center"
+                               LineStackingStrategy="BlockLineHeight" />
+                </Grid>
+
+                <!-- 页脚：页码指示器靠左，出处标签靠右（M2：出处与正文分离） -->
+                <Grid Grid.Row="1">
+                    <TextBlock x:Name="IndicatorText"
+                               Foreground="White"
+                               Opacity="0.75"
+                               HorizontalAlignment="Left"
+                               VerticalAlignment="Bottom" />
+                    <TextBlock x:Name="LabelText"
+                               Foreground="White"
+                               Opacity="0.9"
+                               HorizontalAlignment="Right"
+                               VerticalAlignment="Bottom" />
+                </Grid>
 
             </Grid>
         </Border>
-
     </Grid>
 </Window>

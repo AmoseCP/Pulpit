@@ -15,4 +15,14 @@
     <SatelliteResourceLanguages>zh-Hans</SatelliteResourceLanguages>
   </PropertyGroup>
 
+  <ItemGroup>
+    <ProjectReference Include="..\Pulpit.Core\Pulpit.Core.csproj" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <!-- 经文库随包。用 Link 引用仓库根的那一份，不在 git 里放第二份 7MB 副本。
+         M6 会改成嵌入资源 + 首次运行复制到 %LOCALAPPDATA%\Pulpit\。 -->
+    <Content Include="..\..\bible_cuv.db" Link="Assets\bible_cuv.db" CopyToOutputDirectory="PreserveNewest" />
+  </ItemGroup>
+
 </Project>

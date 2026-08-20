@@ -7,21 +7,27 @@ using System.Windows;
 using System.Windows.Controls;
 using System.Windows.Threading;
 using Pulpit.App.Diagnostics;
+using Pulpit.Core.Config;
+using Pulpit.Core.Content;
+using Pulpit.Core.Data;
+using Pulpit.Core.Parsing;
 
 namespace Pulpit.App.Views;
 
 /// <summary>
-/// M0 尖刺的控制窗口。只做两件事：驱动叠加层，以及把「靠肉眼猜不准」的指标显示出来
-/// （扩展样式位、带状区域物理像素、淡入实测帧率、内存增长）。
+/// M2 阶段的控制窗口：驱动叠加层的测试台 + 把「靠肉眼猜不准」的指标显示出来。
 /// </summary>
 /// <remarks>
-/// M0 **刻意不注册任何全局热键**。L7 规定只有 F7/F8/F9/F10/F12 可注册，而 M0 要验的是
-/// 窗口行为本身；提前注册热键只会给「键位是否误抢 PPT 翻页」这个问题引入无关变量。
-/// 热键子系统属于 M4。
+/// M2 的产出是「<c>OverlayWindow</c> 完整实现，由测试用的按钮驱动」，所以这里还没有
+/// 模式指示、预览区、IME 安全——那些是 M3。全局热键是 M4，此处按钮上的
+/// 「F7/F8/F12」只是标注键位归属，尚未注册。
 /// </remarks>
 public partial class ControlWindow : Window
 {
     private readonly OverlayWindow _overlay;
+    private readonly IBibleRepository? _repository;
+    private readonly IReferenceParser? _parser;
+    private readonly AppConfig _config;
     private readonly DispatcherTimer _poll;
     private readonly Stopwatch _uptime = Stopwatch.StartNew();
     private readonly long _baselineWorkingSet;
@@ -29,23 +35,17 @@ public partial class ControlWindow : Window
     private FadeMeasurement _lastFade;
     private bool _hasFadeSample;
 
-    /// <summary>M0 验收标准，逐字取自 DEVELOPMENT_PLAN.md §3 M0。</summary>
-    private static readonly string[] Checklist =
-    [
-        "1. WPS 全屏放映时，文字可见",
-        "2. 连续翻页 20 次，文字始终可见",
-        "3. 播放带动画的页面，文字不闪烁、不消失",
-        "4. 鼠标点击文字区域，事件落到 WPS 而非本程序（穿透生效）",
-        "5. Alt+Tab 列表中不出现本程序",
-        "6. 主屏切换到记事本并打字，WPS 未退出全屏，文字仍在",
-        "7. 淡入淡出 250ms 视觉流畅，无卡顿撕裂（并记录下方实测帧率）",
-        "8. OBS 显示器采集能抓到文字",
-        "9. 连续运行 60 分钟，内存无明显增长（看下方内存增量）",
-    ];
-
-    public ControlWindow(OverlayWindow overlay)
+    public ControlWindow(
+        OverlayWindow overlay,
+        IBibleRepository? repository,
+        IReferenceParser? parser,
+        AppConfig config,
+        string? databaseError)
     {
         _overlay = overlay ?? throw new ArgumentNullException(nameof(overlay));
+        _repository = repository;
+        _parser = parser;
+        _config = config ?? throw new ArgumentNullException(nameof(config));
 
         InitializeComponent();
 
@@ -55,9 +55,19 @@ public partial class ControlWindow : Window
         }
 
         _overlay.FadeMeasured += OnFadeMeasured;
+        _overlay.ContentChanged += OnOverlayContentChanged;
 
-        BuildChecklist();
+        if (databaseError is not null)
+        {
+            DatabaseWarning.Visibility = Visibility.Visible;
+            DatabaseWarningText.Text =
+                $"经文库不可用，只能投放自由文本。{databaseError}";
+        }
+
+        InputBox.TextChanged += (_, _) => RefreshMode();
+
         RefreshScreens();
+        RefreshMode();
         LogPathText.Text = "日志：" + AppLog.CurrentLogPath;
 
         _poll = new DispatcherTimer(DispatcherPriority.Background)
@@ -68,21 +78,158 @@ public partial class ControlWindow : Window
         _poll.Start();
 
         RefreshDiagnostics();
+        InputBox.Focus();
     }
 
-    private void BuildChecklist()
+    // ================= 投放 =================
+
+    /// <summary>
+    /// 解析输入并投放。三态语义（§5）在这里落地：
+    /// 解析成功走经文，<c>error</c> 为 null 走自由文本，<c>error</c> 非空则**只报错不投放**。
+    /// </summary>
+    private void OnSend(object sender, RoutedEventArgs e) => Send(InputBox.Text);
+
+    private void Send(string input)
     {
-        foreach (string item in Checklist)
+        DisplayContent? content = BuildContent(input, out string? error);
+
+        if (error is not null)
         {
-            ChecklistPanel.Children.Add(new CheckBox
+            // P0-10：报错只出现在控制窗口，副屏保持原状，绝不上副屏。
+            ModeText.Text = "✗ " + error;
+            ModeText.Foreground = System.Windows.Media.Brushes.Firebrick;
+            AppLog.Info($"投放被拒：{input} → {error}");
+            return;
+        }
+
+        if (content is null)
+        {
+            return;
+        }
+
+        _overlay.Show(content);
+        AppLog.Info($"投放：{input}（{content.Kind}，{content.PageCount} 页）");
+        RefreshDiagnostics();
+    }
+
+    /// <summary>
+    /// 把输入变成待投内容。返回 null 且 <paramref name="error"/> 非空 = 该报错；
+    /// 返回 null 且 error 为 null = 没有可投的东西（空输入）。
+    /// </summary>
+    private DisplayContent? BuildContent(string input, out string? error)
+    {
+        error = null;
+
+        if (string.IsNullOrWhiteSpace(input))
+        {
+            return null;
+        }
+
+        if (_parser is not null && _repository is not null
+            && _parser.TryParse(input, out VerseRef? reference, out error))
+        {
+            IReadOnlyList<VerseText> verses = _repository.Lookup(reference);
+
+            if (verses.Count == 0)
             {
-                Margin = new Thickness(0, 3, 0, 3),
-                Content = new TextBlock { Text = item, TextWrapping = TextWrapping.Wrap },
-            });
+                // 解析通过、章节也在范围内，却查不到文本——库出了问题，不该静默上屏。
+                error = "该节在库中查不到文本";
+                return null;
+            }
+
+            return ContentBuilder.FromVerses(reference, verses, _config.Text.UseRawText);
+        }
+
+        if (error is not null)
+        {
+            return null;
+        }
+
+        // 不是引用格式 → 原样上屏（P0-4）。
+        return ContentBuilder.FromFreeText(input);
+    }
+
+    private void OnSample(object sender, RoutedEventArgs e)
+    {
+        if (sender is Button { Tag: string sample })
+        {
+            InputBox.Text = sample;
+            Send(sample);
         }
     }
 
-    // ---------- 屏幕 ----------
+    private void OnPrevPage(object sender, RoutedEventArgs e)
+    {
+        if (!_overlay.PrevPage())
+        {
+            FlashStatus("已在首页");
+        }
+    }
+
+    private void OnNextPage(object sender, RoutedEventArgs e)
+    {
+        if (!_overlay.NextPage())
+        {
+            FlashStatus("已在末页");
+        }
+    }
+
+    private void OnClear(object sender, RoutedEventArgs e)
+    {
+        _overlay.Clear();
+        RefreshDiagnostics();
+    }
+
+    // ================= 模式指示（M3 会做成实时判定的完整版）=================
+
+    private void RefreshMode()
+    {
+        string input = InputBox.Text;
+
+        if (string.IsNullOrWhiteSpace(input))
+        {
+            ModeText.Text = "输入经文引用（约3:16）或任意文字（自由文本）";
+            ModeText.Foreground = System.Windows.Media.Brushes.Gray;
+            return;
+        }
+
+        if (_parser is null)
+        {
+            ModeText.Text = "自由文本（经文库不可用）";
+            ModeText.Foreground = System.Windows.Media.Brushes.DarkOrange;
+            return;
+        }
+
+        if (_parser.TryParse(input, out VerseRef? reference, out string? error))
+        {
+            (int Chapters, string NameZh)? info = _repository?.GetBookInfo(reference.BookId);
+            string range = reference.EndVerse is null
+                ? $"{reference.Chapter}:{reference.Verse}"
+                : $"{reference.Chapter}:{reference.Verse}-{reference.EndVerse}";
+
+            ModeText.Text = $"经文 → {info?.NameZh ?? "?"} {range}";
+            ModeText.Foreground = System.Windows.Media.Brushes.DarkGreen;
+            return;
+        }
+
+        if (error is not null)
+        {
+            ModeText.Text = "✗ " + error;
+            ModeText.Foreground = System.Windows.Media.Brushes.Firebrick;
+            return;
+        }
+
+        ModeText.Text = "自由文本 → 原样上屏";
+        ModeText.Foreground = System.Windows.Media.Brushes.DarkBlue;
+    }
+
+    private void FlashStatus(string message)
+    {
+        ModeText.Text = message;
+        ModeText.Foreground = System.Windows.Media.Brushes.DarkOrange;
+    }
+
+    // ================= 屏幕 =================
 
     /// <summary>ComboBox 用的一行；<see cref="ToString"/> 就是显示文本。</summary>
     private sealed record ScreenChoice(System.Windows.Forms.Screen Screen)
@@ -126,7 +273,7 @@ public partial class ControlWindow : Window
     {
         RefreshScreens();
         _overlay.Reposition();
-        AppLog.Info($"手动刷新屏幕列表，共 {System.Windows.Forms.Screen.AllScreens.Length} 块屏。");
+        RefreshDiagnostics();
     }
 
     private void OnMoveToScreen(object sender, RoutedEventArgs e)
@@ -139,59 +286,73 @@ public partial class ControlWindow : Window
         }
     }
 
-    // ---------- 投放 ----------
+    // ================= 压力测试 =================
 
-    private void OnApplyText(object sender, RoutedEventArgs e)
+    /// <summary>
+    /// M2 验收：反复 Show/Clear 200 次，窗口句柄不变、Z 序不丢。
+    /// </summary>
+    /// <remarks>
+    /// 刻意用 20ms 的间隔而不是等每次淡入淡出走完——那样 200 轮要 100 秒，
+    /// 而且**互相打断的动画本身才是更狠的压力**（BeginAnimation 覆盖进行中的动画）。
+    /// </remarks>
+    private async void OnStress(object sender, RoutedEventArgs e)
     {
-        _overlay.Body = string.IsNullOrWhiteSpace(BodyInput.Text) ? "测试" : BodyInput.Text;
-    }
+        StressButton.IsEnabled = false;
 
-    private void OnFadeIn(object sender, RoutedEventArgs e)
-    {
-        OnApplyText(sender, e);
-        _overlay.FadeIn();
-    }
+        IntPtr before = _overlay.WindowHandle;
+        long heartbeatBefore = _overlay.HeartbeatCount;
 
-    private void OnFadeOut(object sender, RoutedEventArgs e) => _overlay.FadeOut();
-
-    /// <summary>验收第 2/3 项的辅助：连续 20 轮淡入淡出，观察是否掉帧或丢 Z 序。</summary>
-    private async void OnStressFade(object sender, RoutedEventArgs e)
-    {
-        if (sender is Button button)
+        try
         {
-            button.IsEnabled = false;
+            DisplayContent content = BuildContent("测试", out _) ?? ContentBuilder.FromFreeText("测试");
 
-            try
+            for (int i = 0; i < 200; i++)
             {
-                for (int i = 0; i < 20; i++)
+                _overlay.Show(content);
+                await Task.Delay(20).ConfigureAwait(true);
+                _overlay.Clear();
+                await Task.Delay(20).ConfigureAwait(true);
+
+                if (i % 20 == 0)
                 {
-                    _overlay.FadeIn();
-                    await Task.Delay(500).ConfigureAwait(true);
-                    _overlay.FadeOut();
-                    await Task.Delay(500).ConfigureAwait(true);
+                    StressReport.Text = $"进行中… {i}/200";
                 }
+            }
 
-                AppLog.Info("连续淡入淡出 ×20 完成。");
-            }
-            catch (Exception ex)
-            {
-                AppLog.Error("连续淡入淡出压力测试异常。", ex);
-            }
-            finally
-            {
-                button.IsEnabled = true;
-            }
+            IntPtr after = _overlay.WindowHandle;
+            bool stylesOk = _overlay.VerifyWindowStyles(out string styleReport);
+
+            StressReport.Text = string.Format(
+                CultureInfo.InvariantCulture,
+                "200 轮完成。\n句柄 前=0x{0:X} 后=0x{1:X} → {2}\n扩展样式 → {3}\n{4}\n心跳 {5} → {6} 次",
+                before.ToInt64(), after.ToInt64(),
+                before == after ? "不变 ✓" : "已改变 ✗（L4 被违反）",
+                stylesOk ? "完好 ✓" : "异常 ✗",
+                styleReport,
+                heartbeatBefore, _overlay.HeartbeatCount);
+
+            AppLog.Info("Show/Clear ×200 压力测试完成。" + StressReport.Text.Replace('\n', ' '));
+        }
+        catch (Exception ex)
+        {
+            AppLog.Error("压力测试异常。", ex);
+            StressReport.Text = "压力测试异常，详见日志。";
+        }
+        finally
+        {
+            StressButton.IsEnabled = true;
         }
     }
 
-    // ---------- 自检显示 ----------
+    // ================= 自检显示 =================
 
     private void OnFadeMeasured(object? sender, FadeMeasurement m)
     {
         _lastFade = m;
         _hasFadeSample = true;
-        RefreshDiagnostics();
     }
+
+    private void OnOverlayContentChanged(object? sender, EventArgs e) => RefreshDiagnostics();
 
     private void RefreshDiagnostics()
     {
@@ -206,13 +367,25 @@ public partial class ControlWindow : Window
             band.Width, band.Height, band.Left, band.Top,
             _overlay.HeartbeatCount);
 
+        DisplayContent? content = _overlay.CurrentContent;
+        RenderReport.Text = string.Format(
+            CultureInfo.InvariantCulture,
+            "当前内容 {0}   页 {1}   正文字号 {2:F1}px（上限 {3:F0}）   DB {4}",
+            content is null ? "(空)" : content.Kind.ToString(),
+            content is null ? "-" : $"{content.Index + 1}/{content.PageCount}",
+            _overlay.CurrentBodyFontSize,
+            _config.Typography.MaxFontSize,
+            _repository is null ? "不可用" : "已加载");
+
         FadeReport.Text = _hasFadeSample
             ? string.Format(
                 CultureInfo.InvariantCulture,
                 "上次淡入淡出 {0} 帧 / {1:F0}ms → {2:F1} fps{3}",
                 _lastFade.Frames, _lastFade.ElapsedMs, _lastFade.Fps,
-                _lastFade.Fps < 30 ? "   ← 低于 30fps，按验收第 7 项回报" : string.Empty)
-            : "上次淡入淡出 —（还没投放过）";
+                _lastFade.Fps < 30 ? "   ← 低于 30fps，考虑把 animation.fadeMs 设为 0（直切）" : string.Empty)
+            : _config.Animation.FadeMs == 0
+                ? "淡入淡出已关闭（animation.fadeMs=0，直切）"
+                : "上次淡入淡出 —（还没投放过）";
 
         long workingSet;
         using (Process self = Process.GetCurrentProcess())
@@ -234,6 +407,7 @@ public partial class ControlWindow : Window
     {
         _poll.Stop();
         _overlay.FadeMeasured -= OnFadeMeasured;
+        _overlay.ContentChanged -= OnOverlayContentChanged;
         base.OnClosed(e);
     }
 }

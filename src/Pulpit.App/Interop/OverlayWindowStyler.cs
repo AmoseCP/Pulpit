@@ -94,9 +94,11 @@ internal sealed class OverlayWindowStyler : IDisposable
     }
 
     /// <summary>
-    /// L3：定位到目标屏底部的带状区域。<paramref name="heightPercent"/> 为屏高占比。
+    /// L3：定位到目标屏的带状区域。<paramref name="heightPercent"/> 为屏高占比，
+    /// <paramref name="anchorBottom"/> 为 false 时贴顶（config.band.verticalAnchor）。
     /// </summary>
-    internal void PositionOnScreen(System.Windows.Forms.Screen screen, double heightPercent)
+    internal void PositionOnScreen(
+        System.Windows.Forms.Screen screen, double heightPercent, bool anchorBottom = true)
     {
         if (_hwnd == IntPtr.Zero || screen is null)
         {
@@ -111,7 +113,7 @@ internal sealed class OverlayWindowStyler : IDisposable
         }
 
         int x = b.Left;
-        int y = b.Bottom - height;
+        int y = anchorBottom ? b.Bottom - height : b.Top;
 
         NativeMethods.SetWindowPos(
             _hwnd, NativeMethods.HWND_TOPMOST, x, y, b.Width, height,
