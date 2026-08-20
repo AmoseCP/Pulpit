@@ -5,6 +5,7 @@ using System.Threading.Tasks;
 using System.Windows;
 using System.Windows.Threading;
 using Pulpit.App.Diagnostics;
+using Pulpit.App.Interop;
 using Pulpit.App.Views;
 using Pulpit.Core.Config;
 using Pulpit.Core.Data;
@@ -17,6 +18,7 @@ public partial class App : System.Windows.Application
     private OverlayWindow? _overlay;
     private ControlWindow? _control;
     private BibleRepository? _repository;
+    private GlobalHotkeyService? _hotkeys;
 
     protected override void OnStartup(StartupEventArgs e)
     {
@@ -51,6 +53,69 @@ public partial class App : System.Windows.Application
             _overlay, _repository, parser, config, databaseVersion, databaseError);
         _control.Closed += OnControlClosed;
         _control.Show();
+
+        RegisterHotkeys(config);
+    }
+
+    /// <summary>
+    /// 注册全局热键。注册失败**不阻止启动**——按钮仍然可用，
+    /// 失败的键位在状态栏点名告警（M4 验收）。
+    /// </summary>
+    private void RegisterHotkeys(AppConfig config)
+    {
+        _hotkeys = new GlobalHotkeyService();
+        _hotkeys.Pressed += OnHotkeyPressed;
+
+        HotkeyRegistrationResult result = _hotkeys.Register(config.Hotkeys);
+
+        if (_control is not null)
+        {
+            _control.HotkeyStatus = result.StatusText;
+        }
+
+        if (!result.AllSucceeded)
+        {
+            AppLog.Warn("部分热键注册失败：" + string.Join(" ", result.Failed));
+        }
+    }
+
+    /// <summary>
+    /// 热键分派。全部走控制窗口的公开方法，与鼠标点按钮走同一条路径——
+    /// 两条入口共用一套逻辑，才不会出现「按钮能用热键不能用」这种分叉。
+    /// </summary>
+    private void OnHotkeyPressed(object? sender, HotkeyAction action)
+    {
+        if (_control is null)
+        {
+            return;
+        }
+
+        switch (action)
+        {
+            case HotkeyAction.SendZh:
+                _control.SendCurrentInput();
+                break;
+
+            case HotkeyAction.SendEn:
+                _control.SendEnglish();
+                break;
+
+            case HotkeyAction.PrevPage:
+                _control.PrevPage();
+                break;
+
+            case HotkeyAction.NextPage:
+                _control.NextPage();
+                break;
+
+            case HotkeyAction.Clear:
+                _control.Clear();
+                break;
+
+            default:
+                AppLog.Warn($"收到未知热键动作 {action}，忽略。");
+                break;
+        }
     }
 
     /// <summary>
@@ -80,6 +145,9 @@ public partial class App : System.Windows.Application
     private void OnControlClosed(object? sender, EventArgs e)
     {
         AppLog.Info("控制窗口关闭，进程退出。");
+
+        // 热键先注销：留着不放会让下一次启动注册失败。
+        _hotkeys?.Dispose();
 
         // 只有此刻才允许叠加层真正关闭（L4）。
         _overlay?.AllowCloseOnShutdown();
