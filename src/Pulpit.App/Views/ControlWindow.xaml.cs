@@ -48,8 +48,14 @@ public partial class ControlWindow : Window
     private bool _useRawText;
     private string? _lastSentInput;
 
-    /// <summary>初始化外观控件时抑制回调，否则一赋值就当成操作员改动。</summary>
-    private bool _loadingAppearance;
+    /// <summary>
+    /// 初始化外观控件时抑制回调，否则一赋值就当成操作员改动。
+    /// 初值必须为 <c>true</c>：XAML 解析阶段（InitializeComponent 内部）给 Slider 设
+    /// Min/Max/Value 就会触发 ValueChanged，那一刻声明得比它晚的控件还是 null——
+    /// 真机首次启动就在这里 NRE，窗口永远出不来。闸门由构造函数里的
+    /// LoadAppearanceControls() 灌完初值后在 finally 中打开。
+    /// </summary>
+    private bool _loadingAppearance = true;
 
     public ControlWindow(
         OverlayWindow overlay,
@@ -156,17 +162,23 @@ public partial class ControlWindow : Window
 
     private void AttachImeTracking()
     {
+        // handledEventsToo 必须为 true：TextBox 的编辑器自己消费这些文本输入事件并
+        // 标记为已处理，普通 AddHandler 一个都收不到——那样 IsComposing 恒为 false，
+        // F9 在拼音组合中到达时会把半截未确认的文字直接送上副屏（L8 的事故原型）。
         InputBox.AddHandler(
             TextCompositionManager.TextInputStartEvent,
-            new TextCompositionEventHandler(OnCompositionStart));
+            new TextCompositionEventHandler(OnCompositionStart),
+            handledEventsToo: true);
 
         InputBox.AddHandler(
             TextCompositionManager.TextInputUpdateEvent,
-            new TextCompositionEventHandler(OnCompositionUpdate));
+            new TextCompositionEventHandler(OnCompositionUpdate),
+            handledEventsToo: true);
 
         InputBox.AddHandler(
             TextCompositionManager.TextInputEvent,
-            new TextCompositionEventHandler(OnCompositionEnd));
+            new TextCompositionEventHandler(OnCompositionEnd),
+            handledEventsToo: true);
 
         InputBox.LostKeyboardFocus += (_, _) => SetComposing(false);
     }

@@ -468,10 +468,16 @@ public partial class OverlayWindow : Window, IOverlayController
     }
 
     /// <summary>L14：换屏或系统缩放变化后重新按物理像素定位，否则带状区域会算错。</summary>
+    /// <remarks>
+    /// 定位必须**延后**执行：PerMonitorV2 下 WPF 在本方法返回后还会用系统建议矩形
+    /// 再做一次 SetWindowPos（旧矩形按 DPI 比例缩放的结果）。在方法体里直接
+    /// Reposition 会被那次覆盖——带子落在错误的位置/尺寸上，且程序化跨屏移动
+    /// 不触发 DisplaySettingsChanged，没有任何东西会来纠正它。
+    /// </remarks>
     protected override void OnDpiChanged(DpiScale oldDpi, DpiScale newDpi)
     {
         base.OnDpiChanged(oldDpi, newDpi);
-        Reposition();
+        Dispatcher.BeginInvoke(System.Windows.Threading.DispatcherPriority.Background, Reposition);
     }
 
     /// <summary>
@@ -515,10 +521,15 @@ public partial class OverlayWindow : Window, IOverlayController
     }
 
     /// <summary>P0-13：显示器变更后重新定位。副屏拔出时会退回主屏而不是崩。</summary>
+    /// <remarks>
+    /// **不得**把回退结果写回 <c>_targetScreenDeviceName</c>：那等于用主屏覆盖操作员
+    /// 配置的目标屏——投影线重新插回后按名字能找到「目标屏」（已被改成主屏），
+    /// 带子就永远留在操作员屏幕上了。目标名只在 <see cref="MoveToScreen"/>
+    /// （操作员显式选择）里改；回退只影响这一次的落点。
+    /// </remarks>
     public void Reposition()
     {
         System.Windows.Forms.Screen screen = ResolveTargetScreen();
-        _targetScreenDeviceName = screen.DeviceName;
         _styler.PositionOnScreen(screen, _theme.HeightPercent, _theme.AnchorBottom);
     }
 }

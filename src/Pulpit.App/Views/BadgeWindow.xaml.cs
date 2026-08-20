@@ -79,10 +79,11 @@ public partial class BadgeWindow : Window
         _styler.Dispose();
     }
 
+    /// <remarks>延后定位的原因见 <see cref="OverlayWindow.OnDpiChanged"/>。</remarks>
     protected override void OnDpiChanged(DpiScale oldDpi, DpiScale newDpi)
     {
         base.OnDpiChanged(oldDpi, newDpi);
-        Reposition();
+        Dispatcher.BeginInvoke(System.Windows.Threading.DispatcherPriority.Background, Reposition);
     }
 
     // ================= 配置与定位 =================
@@ -130,10 +131,10 @@ public partial class BadgeWindow : Window
         Reposition();
     }
 
+    /// <remarks>回退结果不写回目标屏名，原因见 <see cref="OverlayWindow.Reposition"/>。</remarks>
     public void Reposition()
     {
         System.Windows.Forms.Screen screen = ResolveTargetScreen();
-        _targetScreenDeviceName = screen.DeviceName;
 
         _styler.PositionInCorner(
             screen,

@@ -28,6 +28,13 @@ public partial class App : System.Windows.Application
     private DispatcherTimer? _displayDebounce;
     private bool _displayHooked;
 
+    /// <summary>
+    /// 启动是否已走完。「吞掉异常继续跑」的直播原则只适用于启动**之后**——
+    /// 启动半途的异常被吞掉的结果是一个看不见的僵尸进程：没有任何窗口，却握着
+    /// 单实例互斥锁，之后每次重启都被「已在运行」拒绝（真机首启实测撞上过）。
+    /// </summary>
+    private bool _startupComplete;
+
     protected override void OnStartup(StartupEventArgs e)
     {
         // 叠加层从不 Close（L4），控制窗口关掉才算退出，所以不能用默认的
@@ -57,6 +64,28 @@ public partial class App : System.Windows.Application
 
         AppLog.Info("Pulpit 启动。");
 
+        try
+        {
+            StartUp();
+            _startupComplete = true;
+        }
+        catch (Exception ex)
+        {
+            // 启动期 fail fast。这是主动的启动失败提示（同 P0-14 的「已在运行」框），
+            // 不是直播中的未处理异常对话框——此刻还没有直播可保护。
+            AppLog.Error("启动失败，进程退出。", ex);
+            MessageBox.Show(
+                "Pulpit 启动失败：\n\n" + ex.Message + "\n\n详情见日志：" + AppLog.CurrentLogPath,
+                "Pulpit 无法启动",
+                MessageBoxButton.OK,
+                MessageBoxImage.Error);
+            _singleInstance?.Dispose();
+            Shutdown(1);
+        }
+    }
+
+    private void StartUp()
+    {
         _config = _configStore.Load(out IReadOnlyList<string> notes);
         foreach (string note in notes)
         {
@@ -296,33 +325,44 @@ public partial class App : System.Windows.Application
     {
         AppLog.Info("控制窗口关闭，进程退出。");
 
-        if (_displayHooked)
+        try
         {
-            Microsoft.Win32.SystemEvents.DisplaySettingsChanged -= OnDisplaySettingsChanged;
-            _displayHooked = false;
-        }
+            if (_displayHooked)
+            {
+                Microsoft.Win32.SystemEvents.DisplaySettingsChanged -= OnDisplaySettingsChanged;
+                _displayHooked = false;
+            }
 
-        if (_displayDebounce is not null)
+            if (_displayDebounce is not null)
+            {
+                _displayDebounce.Stop();
+                _displayDebounce.Tick -= OnDisplayDebounceTick;
+                _displayDebounce = null;
+            }
+
+            // 热键先注销：留着不放会让下一次启动注册失败。
+            _hotkeys?.Dispose();
+
+            // 只有此刻才允许两个叠加窗口真正关闭（L4）。
+            _overlay?.AllowCloseOnShutdown();
+            _overlay?.Close();
+
+            _badge?.AllowCloseOnShutdown();
+            _badge?.Close();
+
+            _repository?.Dispose();
+            _singleInstance?.Dispose();
+        }
+        catch (Exception ex)
         {
-            _displayDebounce.Stop();
-            _displayDebounce.Tick -= OnDisplayDebounceTick;
-            _displayDebounce = null;
+            AppLog.Error("退出清理时出错（仍将退出）。", ex);
         }
-
-        // 热键先注销：留着不放会让下一次启动注册失败。
-        _hotkeys?.Dispose();
-
-        // 只有此刻才允许两个叠加窗口真正关闭（L4）。
-        _overlay?.AllowCloseOnShutdown();
-        _overlay?.Close();
-
-        _badge?.AllowCloseOnShutdown();
-        _badge?.Close();
-
-        _repository?.Dispose();
-        _singleInstance?.Dispose();
-
-        Shutdown();
+        finally
+        {
+            // Shutdown 必须无条件到达：清理半途抛异常若被全局处理器吞掉，
+            // OnExplicitShutdown 会让进程带着置顶叠加窗口永远活着。
+            Shutdown();
+        }
     }
 
     // ================= 全局异常 =================
@@ -340,6 +380,17 @@ public partial class App : System.Windows.Application
 
     private void OnDispatcherUnhandledException(object sender, DispatcherUnhandledExceptionEventArgs e)
     {
+        if (!_startupComplete)
+        {
+            // 启动尚未完成：吞掉并继续只会留下一个无窗口、握着单实例锁的僵尸。
+            // 记录、明示、退出（同 OnStartup 的 fail-fast 路径，这里兜住异步到达的）。
+            AppLog.Error("启动尚未完成即遇到未处理异常，进程退出。", e.Exception);
+            e.Handled = true;
+            _singleInstance?.Dispose();
+            Shutdown(1);
+            return;
+        }
+
         AppLog.Error("UI 线程未处理异常（已吞掉，程序继续运行）。", e.Exception);
         e.Handled = true;
     }
