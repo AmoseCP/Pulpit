@@ -34,6 +34,7 @@ public partial class ControlWindow : Window
 {
     private readonly OverlayWindow _overlay;
     private readonly ContentComposer _composer;
+    private readonly SendHistory _history = new();
     private readonly AppConfig _config;
     private readonly string? _databaseVersion;
     private readonly DispatcherTimer _poll;
@@ -75,6 +76,7 @@ public partial class ControlWindow : Window
         }
 
         RawTextToggle.IsChecked = _useRawText;
+        RefreshHistory();
 
         AttachPreview();
         AttachImeTracking();
@@ -226,7 +228,60 @@ public partial class ControlWindow : Window
         _lastSentInput = input;
         _overlay.Show(content);
         AppLog.Info($"投放：{input}（{content.Kind}，{content.PageCount} 页）");
+
+        if (_history.Record(input, content))
+        {
+            RefreshHistory();
+        }
+
         RefreshDiagnostics();
+    }
+
+    // ================= 历史（P1-2）=================
+
+    /// <summary>
+    /// 复投走**双击**，而不是单击。
+    /// </summary>
+    /// <remarks>
+    /// 单击即投在直播中太危险：操作员想选中看一眼就会把内容甩上副屏。
+    /// 双击 + 「复投选中」按钮两条路都通，误触的代价却降到零。
+    /// </remarks>
+    private void OnHistoryActivate(object sender, MouseButtonEventArgs e) => ReplaySelectedHistory();
+
+    private void OnHistoryReplay(object sender, RoutedEventArgs e) => ReplaySelectedHistory();
+
+    private void ReplaySelectedHistory()
+    {
+        if (HistoryList.SelectedItem is not HistoryEntry entry)
+        {
+            ShowMode("先在历史里选一条", ModeLevel.Hint);
+            return;
+        }
+
+        // 把输入框也填上：操作员接着可能想改个节号再投。
+        InputBox.Text = entry.Input;
+
+        // 重新走一遍 Compose，所以复投遵循**当前**的原文/清洗版设置（P1-4），
+        // 而不是投出一份带着旧设置的快照。
+        Send(entry.Input);
+    }
+
+    private void OnHistoryClear(object sender, RoutedEventArgs e)
+    {
+        _history.Clear();
+        RefreshHistory();
+        AppLog.Info("历史已清空。");
+    }
+
+    private void RefreshHistory()
+    {
+        // Entries 是同一个列表对象，直接赋值 ItemsSource 不会触发刷新，
+        // 所以每次拷一份新列表进去。历史最多 30 条，拷贝成本可以忽略。
+        HistoryList.ItemsSource = new List<HistoryEntry>(_history.Entries);
+
+        HistoryHint.Text = _history.Count == 0
+            ? "还没投过经文"
+            : $"{_history.Count} 条（最多 {_history.Capacity}）";
     }
 
     /// <summary>
