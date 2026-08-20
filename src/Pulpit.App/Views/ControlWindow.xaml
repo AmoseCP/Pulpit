@@ -2,8 +2,8 @@
         xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
         xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
         Title="Pulpit — 控制台"
-        Width="760" Height="800"
-        MinWidth="640" MinHeight="640"
+        Width="780" Height="720"
+        MinWidth="660" MinHeight="600"
         WindowStartupLocation="CenterScreen"
         FontFamily="Microsoft YaHei UI, Microsoft YaHei, SimHei"
         FontSize="13"
@@ -23,109 +23,155 @@
             <Setter Property="FontFamily" Value="Consolas, Cascadia Mono, Courier New" />
             <Setter Property="TextWrapping" Value="Wrap" />
         </Style>
+        <Style x:Key="StatusCell" TargetType="TextBlock">
+            <Setter Property="Margin" Value="0,0,18,0" />
+            <Setter Property="VerticalAlignment" Value="Center" />
+            <Setter Property="Foreground" Value="#FF333333" />
+        </Style>
     </Window.Resources>
 
-    <Grid Margin="14">
+    <Grid>
         <Grid.RowDefinitions>
-            <RowDefinition Height="Auto" />
-            <RowDefinition Height="Auto" />
-            <RowDefinition Height="Auto" />
-            <RowDefinition Height="Auto" />
             <RowDefinition Height="*" />
             <RowDefinition Height="Auto" />
         </Grid.RowDefinitions>
 
-        <!-- 数据库告警条：仅在经文库打不开时出现 -->
-        <Border x:Name="DatabaseWarning" Grid.Row="0" Visibility="Collapsed"
-                Background="#FFFFF4CE" BorderBrush="#FFE0C060" BorderThickness="1"
-                Padding="10,7" Margin="0,0,0,10">
-            <TextBlock x:Name="DatabaseWarningText" TextWrapping="Wrap" Foreground="#FF5A4500" />
-        </Border>
-
-        <!-- ① 投放 -->
-        <GroupBox Grid.Row="1" Header="① 投放">
+        <ScrollViewer Grid.Row="0" VerticalScrollBarVisibility="Auto" Padding="14,14,14,0">
             <Grid>
                 <Grid.RowDefinitions>
                     <RowDefinition Height="Auto" />
                     <RowDefinition Height="Auto" />
                     <RowDefinition Height="Auto" />
+                    <RowDefinition Height="Auto" />
+                    <RowDefinition Height="Auto" />
+                    <RowDefinition Height="Auto" />
                 </Grid.RowDefinitions>
-                <Grid.ColumnDefinitions>
-                    <ColumnDefinition Width="*" />
-                    <ColumnDefinition Width="Auto" />
-                </Grid.ColumnDefinitions>
 
-                <TextBox x:Name="InputBox" Grid.Row="0" Grid.Column="0"
-                         Height="30" FontSize="15" VerticalContentAlignment="Center"
-                         Margin="0,0,8,6" AcceptsReturn="False" />
-                <Button Grid.Row="0" Grid.Column="1" Content="投放" Click="OnSend"
-                        Margin="0,0,0,6" MinWidth="96" FontWeight="SemiBold" />
+                <!-- 数据库告警条：仅在经文库打不开时出现 -->
+                <Border x:Name="DatabaseWarning" Grid.Row="0" Visibility="Collapsed"
+                        Background="#FFFFF4CE" BorderBrush="#FFE0C060" BorderThickness="1"
+                        Padding="10,7" Margin="0,0,0,10">
+                    <TextBlock x:Name="DatabaseWarningText" TextWrapping="Wrap" Foreground="#FF5A4500" />
+                </Border>
 
-                <TextBlock x:Name="ModeText" Grid.Row="1" Grid.ColumnSpan="2"
-                           Margin="0,0,0,8" Foreground="#FF444444" TextWrapping="Wrap" />
+                <!-- ① 输入 -->
+                <GroupBox Grid.Row="1" Header="① 输入">
+                    <Grid>
+                        <Grid.RowDefinitions>
+                            <RowDefinition Height="Auto" />
+                            <RowDefinition Height="Auto" />
+                        </Grid.RowDefinitions>
+                        <Grid.ColumnDefinitions>
+                            <ColumnDefinition Width="*" />
+                            <ColumnDefinition Width="Auto" />
+                        </Grid.ColumnDefinitions>
 
-                <StackPanel Grid.Row="2" Grid.ColumnSpan="2" Orientation="Horizontal">
-                    <Button Content="上一页 F7" Click="OnPrevPage" MinWidth="96" />
-                    <Button Content="下一页 F8" Click="OnNextPage" MinWidth="96" />
-                    <Button Content="清屏 F12" Click="OnClear" MinWidth="96" />
-                </StackPanel>
+                        <!--
+                          AcceptsReturn="False" + 全窗口没有任何 IsDefault 按钮
+                          = L8「送出键不是 Enter」。
+
+                          ⚠ 绝不要给下面这个按钮加 IsDefault="True"。那一个属性就等于把送出键
+                          绑回 Enter，中文输入法确认候选词时会有半截内容上屏。
+                          这也是为什么这里刻意**没有**任何 PreviewKeyDown 处理器——
+                          最安全的 Enter 处理就是一行都不写，让 TextBox 自己吞掉它。
+                        -->
+                        <TextBox x:Name="InputBox" Grid.Row="0" Grid.Column="0"
+                                 Height="36" FontSize="17" VerticalContentAlignment="Center"
+                                 Margin="0,0,8,8" AcceptsReturn="False" MaxLength="500" />
+                        <Button Grid.Row="0" Grid.Column="1" Content="投放 (F9)" Click="OnSend"
+                                Margin="0,0,0,8" MinWidth="110" Height="36" FontWeight="SemiBold" />
+
+                        <TextBlock x:Name="ModeText" Grid.Row="1" Grid.ColumnSpan="2"
+                                   TextWrapping="Wrap" FontSize="14" />
+                    </Grid>
+                </GroupBox>
+
+                <!-- ② 预览：所见即副屏 -->
+                <GroupBox Grid.Row="2" Header="② 主屏预览（所见即副屏）">
+                    <Border Background="#FF101010" BorderBrush="#FF808080" BorderThickness="1"
+                            Height="180" ClipToBounds="True">
+                        <Grid>
+                            <!-- VisualBrush 直接镜像叠加层的可视根：不是「照着重画一遍」，
+                                 而是同一份渲染结果，所以永远不会与副屏发生样式漂移。 -->
+                            <Rectangle x:Name="PreviewSurface" />
+
+                            <TextBlock x:Name="PreviewEmptyHint"
+                                       Text="副屏当前为空"
+                                       Foreground="#FF707070" FontSize="14"
+                                       HorizontalAlignment="Center" VerticalAlignment="Center" />
+                        </Grid>
+                    </Border>
+                </GroupBox>
+
+                <!-- ③ 操作 -->
+                <GroupBox Grid.Row="3" Header="③ 操作">
+                    <StackPanel>
+                        <StackPanel Orientation="Horizontal" Margin="0,0,0,8">
+                            <Button Content="上一页 (F7)" Click="OnPrevPage" MinWidth="104" />
+                            <Button Content="下一页 (F8)" Click="OnNextPage" MinWidth="104" />
+                            <Button Content="清屏 (F12)" Click="OnClear" MinWidth="104" />
+                            <Button Content="英文 (F10)" Click="OnSendEnglish" MinWidth="104" Margin="0" />
+                        </StackPanel>
+                        <StackPanel Orientation="Horizontal">
+                            <TextBlock Text="样例：" VerticalAlignment="Center" Margin="0,0,8,0"
+                                       Foreground="#FF666666" />
+                            <Button Content="申30:9 (106字)" Click="OnSample" Tag="申30:9" MinWidth="120" />
+                            <Button Content="诗23:1-6 (6页)" Click="OnSample" Tag="诗23:1-6" MinWidth="120" />
+                            <Button Content="民1:21 (并节)" Click="OnSample" Tag="民1:21" MinWidth="120" />
+                            <Button Content="测试 (2字)" Click="OnSample" Tag="测试" MinWidth="100" Margin="0" />
+                        </StackPanel>
+                    </StackPanel>
+                </GroupBox>
+
+                <!-- ④ 目标屏 -->
+                <GroupBox Grid.Row="4" Header="④ 目标屏（副屏）">
+                    <Grid>
+                        <Grid.ColumnDefinitions>
+                            <ColumnDefinition Width="*" />
+                            <ColumnDefinition Width="Auto" />
+                            <ColumnDefinition Width="Auto" />
+                        </Grid.ColumnDefinitions>
+
+                        <ComboBox x:Name="ScreenList" Grid.Column="0" Height="28"
+                                  VerticalContentAlignment="Center" Margin="0,0,8,0" />
+                        <Button Grid.Column="1" Content="移到此屏" Click="OnMoveToScreen" />
+                        <Button Grid.Column="2" Content="刷新" Click="OnRefreshScreens" Margin="0" />
+                    </Grid>
+                </GroupBox>
+
+                <!-- ⑤ 诊断：现场用不到，默认折叠 -->
+                <Expander Grid.Row="5" Header="⑤ 诊断与自检（现场无需展开）" Margin="0,0,0,10">
+                    <StackPanel Margin="4,8,0,0">
+                        <TextBlock x:Name="StyleReport" Style="{StaticResource Mono}" Margin="0,0,0,4" />
+                        <TextBlock x:Name="BandReport" Style="{StaticResource Mono}" Margin="0,0,0,4" />
+                        <TextBlock x:Name="RenderReport" Style="{StaticResource Mono}" Margin="0,0,0,4" />
+                        <TextBlock x:Name="FadeReport" Style="{StaticResource Mono}" Margin="0,0,0,4" />
+                        <TextBlock x:Name="RuntimeReport" Style="{StaticResource Mono}" Margin="0,0,0,8" />
+
+                        <StackPanel Orientation="Horizontal" Margin="0,0,0,6">
+                            <Button x:Name="StressButton" Content="Show/Clear ×200（验句柄与 Z 序）"
+                                    Click="OnStress" MinWidth="240" />
+                        </StackPanel>
+
+                        <TextBlock x:Name="StressReport" Style="{StaticResource Mono}"
+                                   Foreground="#FF225522" />
+                        <TextBlock x:Name="LogPathText" Style="{StaticResource Mono}"
+                                   Foreground="#FF666666" FontSize="11" Margin="0,6,0,0" />
+                    </StackPanel>
+                </Expander>
             </Grid>
-        </GroupBox>
+        </ScrollViewer>
 
-        <!-- ② 样例（M2 验收用） -->
-        <GroupBox Grid.Row="2" Header="② 样例（M2 验收：最长节 / 最短内容 / 多页）">
+        <!-- 状态栏 -->
+        <Border Grid.Row="1" Background="#FFE8E8E8" BorderBrush="#FFC8C8C8" BorderThickness="0,1,0,0"
+                Padding="14,6">
             <StackPanel Orientation="Horizontal">
-                <Button Content="申30:9 (106字 全库最长)" Click="OnSample" Tag="申30:9" MinWidth="180" />
-                <Button Content="太23:13 (60字)" Click="OnSample" Tag="太23:13" MinWidth="130" />
-                <Button Content="诗23:1-6 (6页)" Click="OnSample" Tag="诗23:1-6" MinWidth="130" />
-                <Button Content="测试 (2字)" Click="OnSample" Tag="测试" MinWidth="100" Margin="0" />
+                <TextBlock x:Name="StatusScreen" Style="{StaticResource StatusCell}" />
+                <TextBlock x:Name="StatusPage" Style="{StaticResource StatusCell}" />
+                <TextBlock x:Name="StatusDatabase" Style="{StaticResource StatusCell}" />
+                <TextBlock x:Name="StatusIme" Style="{StaticResource StatusCell}" />
+                <TextBlock x:Name="StatusHotkeys" Style="{StaticResource StatusCell}" />
             </StackPanel>
-        </GroupBox>
-
-        <!-- ③ 目标屏 -->
-        <GroupBox Grid.Row="3" Header="③ 目标屏（副屏）">
-            <Grid>
-                <Grid.ColumnDefinitions>
-                    <ColumnDefinition Width="*" />
-                    <ColumnDefinition Width="Auto" />
-                    <ColumnDefinition Width="Auto" />
-                </Grid.ColumnDefinitions>
-
-                <ComboBox x:Name="ScreenList" Grid.Column="0" Height="28"
-                          VerticalContentAlignment="Center" Margin="0,0,8,0" />
-                <Button Grid.Column="1" Content="移到此屏" Click="OnMoveToScreen" />
-                <Button Grid.Column="2" Content="刷新" Click="OnRefreshScreens" Margin="0" />
-            </Grid>
-        </GroupBox>
-
-        <!-- ④ 自检 -->
-        <GroupBox Grid.Row="4" Header="④ 实时自检">
-            <Grid>
-                <Grid.RowDefinitions>
-                    <RowDefinition Height="Auto" />
-                    <RowDefinition Height="Auto" />
-                    <RowDefinition Height="*" />
-                </Grid.RowDefinitions>
-
-                <StackPanel Grid.Row="0">
-                    <TextBlock x:Name="StyleReport" Style="{StaticResource Mono}" Margin="0,0,0,4" />
-                    <TextBlock x:Name="BandReport" Style="{StaticResource Mono}" Margin="0,0,0,4" />
-                    <TextBlock x:Name="RenderReport" Style="{StaticResource Mono}" Margin="0,0,0,4" />
-                    <TextBlock x:Name="FadeReport" Style="{StaticResource Mono}" Margin="0,0,0,4" />
-                    <TextBlock x:Name="RuntimeReport" Style="{StaticResource Mono}" Margin="0,0,0,8" />
-                </StackPanel>
-
-                <StackPanel Grid.Row="1" Orientation="Horizontal" Margin="0,0,0,6">
-                    <Button x:Name="StressButton" Content="Show/Clear ×200（验句柄与 Z 序）"
-                            Click="OnStress" MinWidth="240" />
-                </StackPanel>
-
-                <TextBlock x:Name="StressReport" Grid.Row="2" Style="{StaticResource Mono}"
-                           VerticalAlignment="Top" Foreground="#FF225522" />
-            </Grid>
-        </GroupBox>
-
-        <TextBlock x:Name="LogPathText" Grid.Row="5" Style="{StaticResource Mono}"
-                   Foreground="#FF666666" FontSize="11" Margin="0,4,0,0" />
+        </Border>
     </Grid>
 </Window>

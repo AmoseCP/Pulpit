@@ -38,6 +38,7 @@ public partial class App : System.Windows.Application
         }
 
         _repository = OpenRepository(out string? databaseError);
+        string? databaseVersion = _repository?.SchemaVersion;
 
         ReferenceParser? parser = _repository is null ? null : new ReferenceParser(_repository);
 
@@ -46,7 +47,8 @@ public partial class App : System.Windows.Application
         // ShowActivated=False 已在 XAML 声明；Show() 不会夺取焦点。
         _overlay.Show();
 
-        _control = new ControlWindow(_overlay, _repository, parser, config, databaseError);
+        _control = new ControlWindow(
+            _overlay, _repository, parser, config, databaseVersion, databaseError);
         _control.Closed += OnControlClosed;
         _control.Show();
     }

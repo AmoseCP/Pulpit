@@ -151,9 +151,12 @@ public partial class OverlayWindow : Window, IOverlayController
         ArgumentNullException.ThrowIfNull(content);
 
         _content = content;
-        RenderCurrentPage();
 
+        // IsContentVisible 要在 RenderCurrentPage 之前置位——RenderCurrentPage 会触发
+        // ContentChanged，控制窗口的「副屏当前为空」提示是照这个标志判断的。
         IsContentVisible = true;
+
+        RenderCurrentPage();
         _styler.ForceTopmost();   // 淡入这一刻最需要确保在最上层
         Fade(to: 1.0);
     }

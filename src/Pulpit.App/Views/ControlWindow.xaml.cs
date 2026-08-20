@@ -5,6 +5,8 @@ using System.Globalization;
 using System.Threading.Tasks;
 using System.Windows;
 using System.Windows.Controls;
+using System.Windows.Input;
+using System.Windows.Media;
 using System.Windows.Threading;
 using Pulpit.App.Diagnostics;
 using Pulpit.Core.Config;
@@ -15,12 +17,20 @@ using Pulpit.Core.Parsing;
 namespace Pulpit.App.Views;
 
 /// <summary>
-/// M2 阶段的控制窗口：驱动叠加层的测试台 + 把「靠肉眼猜不准」的指标显示出来。
+/// 主屏控制窗口。输入、预览、翻页、清屏、状态。
 /// </summary>
 /// <remarks>
-/// M2 的产出是「<c>OverlayWindow</c> 完整实现，由测试用的按钮驱动」，所以这里还没有
-/// 模式指示、预览区、IME 安全——那些是 M3。全局热键是 M4，此处按钮上的
-/// 「F7/F8/F12」只是标注键位归属，尚未注册。
+/// <para><b>IME 安全（L8 + M3 验收）</b>是本类最要紧的性质，由三件事共同保证：</para>
+/// <list type="number">
+/// <item><c>InputBox.AcceptsReturn=False</c> —— TextBox 自己吞掉 Enter。</item>
+/// <item>全窗口**没有任何** <c>IsDefault="True"</c> 的按钮，也没有绑到 Enter 的
+///   <c>KeyBinding</c>、<c>PreviewKeyDown</c>。最安全的 Enter 处理就是一行都不写：
+///   只要存在一个默认按钮，Enter 就会重新变成送出键，中文输入法确认候选词时
+///   就会有半截内容上屏。</item>
+/// <item>组合态跟踪（<see cref="TextCompositionManager"/>）—— 送出走的是全局热键 F9，
+///   它可能在输入法**正在组合**的时刻到达，此时 <c>InputBox.Text</c> 里是半成品。
+///   所以组合中一律拒绝送出并提示，见 <see cref="IsComposing"/>。</item>
+/// </list>
 /// </remarks>
 public partial class ControlWindow : Window
 {
@@ -28,6 +38,7 @@ public partial class ControlWindow : Window
     private readonly IBibleRepository? _repository;
     private readonly IReferenceParser? _parser;
     private readonly AppConfig _config;
+    private readonly string? _databaseVersion;
     private readonly DispatcherTimer _poll;
     private readonly Stopwatch _uptime = Stopwatch.StartNew();
     private readonly long _baselineWorkingSet;
@@ -40,12 +51,14 @@ public partial class ControlWindow : Window
         IBibleRepository? repository,
         IReferenceParser? parser,
         AppConfig config,
+        string? databaseVersion,
         string? databaseError)
     {
         _overlay = overlay ?? throw new ArgumentNullException(nameof(overlay));
         _repository = repository;
         _parser = parser;
         _config = config ?? throw new ArgumentNullException(nameof(config));
+        _databaseVersion = databaseVersion;
 
         InitializeComponent();
 
@@ -60,9 +73,11 @@ public partial class ControlWindow : Window
         if (databaseError is not null)
         {
             DatabaseWarning.Visibility = Visibility.Visible;
-            DatabaseWarningText.Text =
-                $"经文库不可用，只能投放自由文本。{databaseError}";
+            DatabaseWarningText.Text = $"经文库不可用，只能投放自由文本。{databaseError}";
         }
+
+        AttachPreview();
+        AttachImeTracking();
 
         InputBox.TextChanged += (_, _) => RefreshMode();
 
@@ -81,13 +96,103 @@ public partial class ControlWindow : Window
         InputBox.Focus();
     }
 
-    // ================= 投放 =================
+    /// <summary>热键子系统的状态文本，由 <c>App</c> 在 M4 注册完成后写入。</summary>
+    public string HotkeyStatus { get; set; } = "热键：未启用（M4）";
+
+    /// <summary>输入法是否正在组合候选词。</summary>
+    public bool IsComposing { get; private set; }
+
+    // ================= 预览：所见即副屏 =================
 
     /// <summary>
-    /// 解析输入并投放。三态语义（§5）在这里落地：
-    /// 解析成功走经文，<c>error</c> 为 null 走自由文本，<c>error</c> 非空则**只报错不投放**。
+    /// 用 <see cref="VisualBrush"/> 直接镜像叠加层的可视根。
     /// </summary>
-    private void OnSend(object sender, RoutedEventArgs e) => Send(InputBox.Text);
+    /// <remarks>
+    /// 这不是「照着副屏的样式在主屏重画一遍」——那种做法迟早会与副屏漂移
+    /// （改了字号规则忘了改预览）。VisualBrush 用的是同一份渲染结果，
+    /// 结构上不可能不一致。淡出后预览也会跟着变空，那正是副屏的真实状态，
+    /// 所以另配一行「副屏当前为空」的提示，免得操作员对着黑框发懵。
+    /// </remarks>
+    private void AttachPreview()
+    {
+        var brush = new VisualBrush(_overlay.PreviewSource)
+        {
+            Stretch = Stretch.Uniform,
+            AlignmentX = AlignmentX.Center,
+            AlignmentY = AlignmentY.Center,
+        };
+
+        PreviewSurface.Fill = brush;
+    }
+
+    // ================= IME 组合态跟踪 =================
+
+    private void AttachImeTracking()
+    {
+        InputBox.AddHandler(
+            TextCompositionManager.TextInputStartEvent,
+            new TextCompositionEventHandler(OnCompositionStart));
+
+        InputBox.AddHandler(
+            TextCompositionManager.TextInputUpdateEvent,
+            new TextCompositionEventHandler(OnCompositionUpdate));
+
+        InputBox.AddHandler(
+            TextCompositionManager.TextInputEvent,
+            new TextCompositionEventHandler(OnCompositionEnd));
+
+        InputBox.LostKeyboardFocus += (_, _) => SetComposing(false);
+    }
+
+    private void OnCompositionStart(object sender, TextCompositionEventArgs e) => SetComposing(true);
+
+    private void OnCompositionUpdate(object sender, TextCompositionEventArgs e) => SetComposing(true);
+
+    /// <summary>TextInput 表示这一段文字已经确认落地，组合结束。</summary>
+    private void OnCompositionEnd(object sender, TextCompositionEventArgs e) => SetComposing(false);
+
+    private void SetComposing(bool composing)
+    {
+        if (IsComposing == composing)
+        {
+            return;
+        }
+
+        IsComposing = composing;
+        RefreshMode();
+        RefreshStatusBar();
+    }
+
+    // ================= 投放 =================
+
+    private void OnSend(object sender, RoutedEventArgs e) => SendCurrentInput();
+
+    /// <summary>
+    /// 送出当前输入。由「投放」按钮和 M4 的 F9 全局热键共用同一条路径。
+    /// </summary>
+    public void SendCurrentInput()
+    {
+        if (IsComposing)
+        {
+            // F9 可能在输入法组合中到达，此时 InputBox.Text 是半成品。
+            // 宁可不投也不能投半截（L8 的同一个道理）。
+            ShowMode("输入法正在组合候选词，请先确认后再送出", ModeLevel.Warning);
+            AppLog.Info("送出被拒：输入法组合中。");
+            return;
+        }
+
+        Send(InputBox.Text);
+    }
+
+    /// <summary>P0-9：F10 键位在 v1 必须存在，只是提示英文库未安装。</summary>
+    public void SendEnglish()
+    {
+        // L13：v1 仅中文，但键位必须在 v1 就建立起志愿者的肌肉记忆。
+        ShowMode("英文译本未安装（v1.1 补）", ModeLevel.Warning);
+        AppLog.Info("F10 被按下，但英文译本未安装。");
+    }
+
+    private void OnSendEnglish(object sender, RoutedEventArgs e) => SendEnglish();
 
     private void Send(string input)
     {
@@ -96,14 +201,14 @@ public partial class ControlWindow : Window
         if (error is not null)
         {
             // P0-10：报错只出现在控制窗口，副屏保持原状，绝不上副屏。
-            ModeText.Text = "✗ " + error;
-            ModeText.Foreground = System.Windows.Media.Brushes.Firebrick;
+            ShowMode("✗ " + error, ModeLevel.Error);
             AppLog.Info($"投放被拒：{input} → {error}");
             return;
         }
 
         if (content is null)
         {
+            ShowMode("没有可投放的内容", ModeLevel.Hint);
             return;
         }
 
@@ -114,7 +219,7 @@ public partial class ControlWindow : Window
 
     /// <summary>
     /// 把输入变成待投内容。返回 null 且 <paramref name="error"/> 非空 = 该报错；
-    /// 返回 null 且 error 为 null = 没有可投的东西（空输入）。
+    /// 两者都为 null = 没有可投的东西（空输入）。
     /// </summary>
     private DisplayContent? BuildContent(string input, out string? error)
     {
@@ -158,75 +263,109 @@ public partial class ControlWindow : Window
         }
     }
 
-    private void OnPrevPage(object sender, RoutedEventArgs e)
+    private void OnPrevPage(object sender, RoutedEventArgs e) => PrevPage();
+
+    private void OnNextPage(object sender, RoutedEventArgs e) => NextPage();
+
+    private void OnClear(object sender, RoutedEventArgs e) => Clear();
+
+    public void PrevPage()
     {
         if (!_overlay.PrevPage())
         {
-            FlashStatus("已在首页");
+            ShowMode("已在首页", ModeLevel.Hint);
         }
     }
 
-    private void OnNextPage(object sender, RoutedEventArgs e)
+    public void NextPage()
     {
         if (!_overlay.NextPage())
         {
-            FlashStatus("已在末页");
+            ShowMode("已在末页", ModeLevel.Hint);
         }
     }
 
-    private void OnClear(object sender, RoutedEventArgs e)
+    public void Clear()
     {
         _overlay.Clear();
+        ShowMode("已清屏", ModeLevel.Hint);
         RefreshDiagnostics();
     }
 
-    // ================= 模式指示（M3 会做成实时判定的完整版）=================
+    // ================= 模式指示（实时判定）=================
 
+    private enum ModeLevel
+    {
+        Hint,
+        Scripture,
+        FreeText,
+        Warning,
+        Error,
+    }
+
+    private void ShowMode(string text, ModeLevel level)
+    {
+        ModeText.Text = text;
+        ModeText.Foreground = level switch
+        {
+            ModeLevel.Scripture => Brushes.DarkGreen,
+            ModeLevel.FreeText => Brushes.MediumBlue,
+            ModeLevel.Warning => Brushes.DarkOrange,
+            ModeLevel.Error => Brushes.Firebrick,
+            _ => Brushes.Gray,
+        };
+    }
+
+    /// <summary>
+    /// M3 验收：输入 <c>约3:16</c> 显示「经文」，输入 <c>欢迎新朋友</c> 显示「自由文本」。
+    /// </summary>
     private void RefreshMode()
     {
         string input = InputBox.Text;
 
-        if (string.IsNullOrWhiteSpace(input))
+        if (IsComposing)
         {
-            ModeText.Text = "输入经文引用（约3:16）或任意文字（自由文本）";
-            ModeText.Foreground = System.Windows.Media.Brushes.Gray;
+            // 组合中不做判定也不报错：半成品必然解析失败，此时刷出「未知书卷」是噪音。
+            ShowMode("输入法组合中…", ModeLevel.Hint);
             return;
         }
 
-        if (_parser is null)
+        if (string.IsNullOrWhiteSpace(input))
         {
-            ModeText.Text = "自由文本（经文库不可用）";
-            ModeText.Foreground = System.Windows.Media.Brushes.DarkOrange;
+            ShowMode("输入经文引用（约3:16 / 罗8:28 / 诗23:1-6）或任意文字", ModeLevel.Hint);
+            return;
+        }
+
+        if (_parser is null || _repository is null)
+        {
+            ShowMode("自由文本 → 原样上屏（经文库不可用）", ModeLevel.Warning);
             return;
         }
 
         if (_parser.TryParse(input, out VerseRef? reference, out string? error))
         {
-            (int Chapters, string NameZh)? info = _repository?.GetBookInfo(reference.BookId);
-            string range = reference.EndVerse is null
-                ? $"{reference.Chapter}:{reference.Verse}"
-                : $"{reference.Chapter}:{reference.Verse}-{reference.EndVerse}";
+            IReadOnlyList<VerseText> verses = _repository.Lookup(reference);
 
-            ModeText.Text = $"经文 → {info?.NameZh ?? "?"} {range}";
-            ModeText.Foreground = System.Windows.Media.Brushes.DarkGreen;
+            if (verses.Count == 0)
+            {
+                ShowMode("✗ 该节在库中查不到文本", ModeLevel.Error);
+                return;
+            }
+
+            string label = verses[0].Label;
+            string pages = verses.Count > 1 ? $"，{verses.Count} 页" : string.Empty;
+
+            ShowMode($"经文 → {label}{pages}", ModeLevel.Scripture);
             return;
         }
 
         if (error is not null)
         {
-            ModeText.Text = "✗ " + error;
-            ModeText.Foreground = System.Windows.Media.Brushes.Firebrick;
+            ShowMode("✗ " + error, ModeLevel.Error);
             return;
         }
 
-        ModeText.Text = "自由文本 → 原样上屏";
-        ModeText.Foreground = System.Windows.Media.Brushes.DarkBlue;
-    }
-
-    private void FlashStatus(string message)
-    {
-        ModeText.Text = message;
-        ModeText.Foreground = System.Windows.Media.Brushes.DarkOrange;
+        ShowMode("自由文本 → 原样上屏", ModeLevel.FreeText);
     }
 
     // ================= 屏幕 =================
@@ -282,15 +421,13 @@ public partial class ControlWindow : Window
         {
             _overlay.MoveToScreen(choice.Screen);
             AppLog.Info($"叠加层移到 {choice.Screen.DeviceName}。");
+            RefreshScreens();
             RefreshDiagnostics();
         }
     }
 
-    // ================= 压力测试 =================
+    // ================= 压力测试（M2 验收）=================
 
-    /// <summary>
-    /// M2 验收：反复 Show/Clear 200 次，窗口句柄不变、Z 序不丢。
-    /// </summary>
     /// <remarks>
     /// 刻意用 20ms 的间隔而不是等每次淡入淡出走完——那样 200 轮要 100 秒，
     /// 而且**互相打断的动画本身才是更狠的压力**（BeginAnimation 覆盖进行中的动画）。
@@ -304,7 +441,7 @@ public partial class ControlWindow : Window
 
         try
         {
-            DisplayContent content = BuildContent("测试", out _) ?? ContentBuilder.FromFreeText("测试");
+            DisplayContent content = ContentBuilder.FromFreeText("测试");
 
             for (int i = 0; i < 200; i++)
             {
@@ -344,7 +481,7 @@ public partial class ControlWindow : Window
         }
     }
 
-    // ================= 自检显示 =================
+    // ================= 状态与自检 =================
 
     private void OnFadeMeasured(object? sender, FadeMeasurement m)
     {
@@ -352,10 +489,43 @@ public partial class ControlWindow : Window
         _hasFadeSample = true;
     }
 
-    private void OnOverlayContentChanged(object? sender, EventArgs e) => RefreshDiagnostics();
+    private void OnOverlayContentChanged(object? sender, EventArgs e)
+    {
+        PreviewEmptyHint.Visibility = _overlay.IsContentVisible
+            ? Visibility.Collapsed
+            : Visibility.Visible;
+
+        RefreshStatusBar();
+    }
+
+    private void RefreshStatusBar()
+    {
+        DisplayContent? content = _overlay.CurrentContent;
+
+        StatusScreen.Text = "副屏：" + _overlay.TargetScreenDeviceName;
+
+        StatusPage.Text = content is null
+            ? "页：—"
+            : content.HasMultiplePages
+                ? $"页：{content.Index + 1}/{content.PageCount}"
+                : "页：单页";
+
+        StatusDatabase.Text = _repository is null
+            ? "库：不可用"
+            : $"库：CUV v{_databaseVersion ?? "?"}";
+
+        StatusIme.Text = IsComposing ? "输入法：组合中" : "输入法：待机";
+        StatusHotkeys.Text = HotkeyStatus;
+    }
 
     private void RefreshDiagnostics()
     {
+        RefreshStatusBar();
+
+        PreviewEmptyHint.Visibility = _overlay.IsContentVisible
+            ? Visibility.Collapsed
+            : Visibility.Visible;
+
         bool stylesOk = _overlay.VerifyWindowStyles(out string styleReport);
         StyleReport.Text = (stylesOk ? "扩展样式 正常  " : "扩展样式 异常  ") + styleReport;
 
@@ -370,12 +540,11 @@ public partial class ControlWindow : Window
         DisplayContent? content = _overlay.CurrentContent;
         RenderReport.Text = string.Format(
             CultureInfo.InvariantCulture,
-            "当前内容 {0}   页 {1}   正文字号 {2:F1}px（上限 {3:F0}）   DB {4}",
+            "当前内容 {0}   页 {1}   正文字号 {2:F1}px（上限 {3:F0}）",
             content is null ? "(空)" : content.Kind.ToString(),
             content is null ? "-" : $"{content.Index + 1}/{content.PageCount}",
             _overlay.CurrentBodyFontSize,
-            _config.Typography.MaxFontSize,
-            _repository is null ? "不可用" : "已加载");
+            _config.Typography.MaxFontSize);
 
         FadeReport.Text = _hasFadeSample
             ? string.Format(
