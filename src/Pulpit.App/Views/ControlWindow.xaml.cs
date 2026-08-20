@@ -253,6 +253,56 @@ public partial class ControlWindow : Window
         RefreshDiagnostics();
     }
 
+    // ================= 歌词模式（P2-2）=================
+
+    /// <summary>
+    /// 投放多行歌词。空行即分页点，超长小节按 <c>lyrics.linesPerPage</c> 切开。
+    /// </summary>
+    /// <remarks>
+    /// 歌词框的 <c>AcceptsReturn=True</c> 不违反 L8：Enter 只在框内插换行，
+    /// 永远不会送出——全窗口没有任何 <c>IsDefault</c> 按钮。投放走这个按钮，
+    /// 投放之后 F7/F8/F12 照常可用。
+    /// </remarks>
+    private void OnSendLyrics(object sender, RoutedEventArgs e)
+    {
+        DisplayContent content = ContentBuilder.FromLyrics(
+            LyricsBox.Text, _config.Lyrics.LinesPerPage);
+
+        if (content.IsEmpty)
+        {
+            LyricsHint.Text = "歌词框是空的";
+            return;
+        }
+
+        // 歌词不经过 ContentComposer，「原文/清洗版切换后原地重投」那条路径对它不适用；
+        // 置空 _lastSentInput，免得切换开关时把歌词当引用去重新解析。
+        _lastSentInput = null;
+
+        _overlay.Show(content);
+
+        LyricsHint.Text = $"已投放，共 {content.PageCount} 页——用 F8 / F7 翻页";
+        AppLog.Info($"投放歌词：{content.PageCount} 页。");
+
+        RefreshDiagnostics();
+    }
+
+    private void OnClearLyrics(object sender, RoutedEventArgs e)
+    {
+        LyricsBox.Clear();
+        LyricsHint.Text = string.Empty;
+    }
+
+    /// <summary>边打边告诉操作员会分成几页，省得投出去才发现分页不对。</summary>
+    private void OnLyricsChanged(object sender, TextChangedEventArgs e)
+    {
+        DisplayContent preview = ContentBuilder.FromLyrics(
+            LyricsBox.Text, _config.Lyrics.LinesPerPage);
+
+        LyricsHint.Text = preview.IsEmpty
+            ? string.Empty
+            : $"将分成 {preview.PageCount} 页（空行处分页，每页最多 {_config.Lyrics.LinesPerPage} 行）";
+    }
+
     // ================= 关键词反查（P2-1）=================
 
     /// <summary>

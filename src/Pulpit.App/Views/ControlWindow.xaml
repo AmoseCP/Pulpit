@@ -47,6 +47,7 @@
                     <RowDefinition Height="Auto" />
                     <RowDefinition Height="Auto" />
                     <RowDefinition Height="Auto" />
+                    <RowDefinition Height="Auto" />
                 </Grid.RowDefinitions>
 
                 <!-- 数据库告警条：仅在经文库打不开时出现 -->
@@ -171,8 +172,40 @@
                     </StackPanel>
                 </GroupBox>
 
-                <!-- ④ 历史（本次聚会） -->
-                <GroupBox Grid.Row="4" Header="④ 历史（本次聚会已投过的经文，双击复投）">
+                <!-- ④ 歌词模式（P2-2） -->
+                <Expander Grid.Row="4" Header="④ 歌词模式（多行，空行分页）" Margin="0,0,0,10">
+                    <Grid Margin="4,8,0,0">
+                        <Grid.RowDefinitions>
+                            <RowDefinition Height="Auto" />
+                            <RowDefinition Height="Auto" />
+                        </Grid.RowDefinitions>
+
+                        <!--
+                          这里 AcceptsReturn="True" 是安全的，不违反 L8：
+                          Enter 只在这个框里插一个换行，永远不会送出——
+                          因为全窗口没有任何 IsDefault 按钮（见 ① 输入 的注释）。
+                          歌词投放走下面的按钮，投放后 F7/F8/F12 照常可用。
+                        -->
+                        <TextBox x:Name="LyricsBox" Grid.Row="0"
+                                 AcceptsReturn="True" TextWrapping="Wrap"
+                                 Height="104" FontSize="14"
+                                 VerticalScrollBarVisibility="Auto"
+                                 SpellCheck.IsEnabled="False"
+                                 Margin="0,0,0,8"
+                                 TextChanged="OnLyricsChanged" />
+
+                        <StackPanel Grid.Row="1" Orientation="Horizontal">
+                            <Button Content="投放歌词" Click="OnSendLyrics" MinWidth="100"
+                                    FontWeight="SemiBold" />
+                            <Button Content="清空" Click="OnClearLyrics" MinWidth="70" Margin="0" />
+                            <TextBlock x:Name="LyricsHint" VerticalAlignment="Center"
+                                       Margin="12,0,0,0" Foreground="#FF888888" TextWrapping="Wrap" />
+                        </StackPanel>
+                    </Grid>
+                </Expander>
+
+                <!-- ⑤ 历史（本次聚会） -->
+                <GroupBox Grid.Row="5" Header="⑤ 历史（本次聚会已投过的经文，双击复投）">
                     <Grid>
                         <Grid.RowDefinitions>
                             <RowDefinition Height="Auto" />
@@ -206,8 +239,8 @@
                     </Grid>
                 </GroupBox>
 
-                <!-- ⑤ 目标屏 -->
-                <GroupBox Grid.Row="5" Header="⑤ 目标屏（副屏）">
+                <!-- ⑥ 目标屏 -->
+                <GroupBox Grid.Row="6" Header="⑥ 目标屏（副屏）">
                     <Grid>
                         <Grid.ColumnDefinitions>
                             <ColumnDefinition Width="*" />
@@ -222,8 +255,8 @@
                     </Grid>
                 </GroupBox>
 
-                <!-- ⑥ 外观：彩排时调，现场不动，默认折叠 -->
-                <Expander Grid.Row="6" Header="⑥ 外观（彩排时调，改动实时反映到副屏与预览）"
+                <!-- ⑦ 外观：彩排时调，现场不动，默认折叠 -->
+                <Expander Grid.Row="7" Header="⑦ 外观（彩排时调，改动实时反映到副屏与预览）"
                           Margin="0,0,0,10">
                     <Grid Margin="4,8,0,0">
                         <Grid.ColumnDefinitions>
@@ -297,8 +330,8 @@
                     </Grid>
                 </Expander>
 
-                <!-- ⑦ 诊断：现场用不到，默认折叠 -->
-                <Expander Grid.Row="7" Header="⑦ 诊断与自检（现场无需展开）" Margin="0,0,0,10">
+                <!-- ⑧ 诊断：现场用不到，默认折叠 -->
+                <Expander Grid.Row="8" Header="⑧ 诊断与自检（现场无需展开）" Margin="0,0,0,10">
                     <StackPanel Margin="4,8,0,0">
                         <TextBlock x:Name="StyleReport" Style="{StaticResource Mono}" Margin="0,0,0,4" />
                         <TextBlock x:Name="BandReport" Style="{StaticResource Mono}" Margin="0,0,0,4" />

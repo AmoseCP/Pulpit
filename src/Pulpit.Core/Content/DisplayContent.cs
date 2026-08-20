@@ -11,6 +11,9 @@ public enum ContentKind
 
     /// <summary>不匹配引用格式的输入，原样上屏（P0-4）。</summary>
     FreeText,
+
+    /// <summary>多行歌词（P2-2）：保留换行，按小节分页，无出处标签。</summary>
+    Lyrics,
 }
 
 /// <summary>副屏上的一页。<c>Label</c> 为空表示无出处标签（自由文本）。</summary>

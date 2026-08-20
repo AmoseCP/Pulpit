@@ -1,0 +1,18 @@
+# 默认：文本按内容自动识别，工作区一律 LF
+* text=auto eol=lf
+
+# ⚠ 经文库是 7MB 交付资产，绝不允许任何换行/编码转换碰它
+*.db binary
+
+# 源码钉成 LF：C# 的原始字符串字面量（"""…"""）会把文件里的换行原样收进字符串，
+# 换行风格变了，字符串内容就跟着变
+*.cs      text eol=lf
+*.xaml    text eol=lf
+*.csproj  text eol=lf
+*.sln     text eol=crlf
+*.props   text eol=lf
+*.md      text eol=lf
+*.json    text eol=lf
+
+# 批处理脚本用 CRLF：LF-only 的 .cmd 在某些 Windows 版本上会让 goto/label 出错
+*.cmd     text eol=crlf

@@ -30,6 +30,8 @@ public sealed record AppConfig
 
     public TextConfig Text { get; init; } = new();
 
+    public LyricsConfig Lyrics { get; init; } = new();
+
     /// <summary>
     /// 把越界或非法的字段夹回合法范围，返回被修正项的说明（供调用方写日志）。
     /// </summary>
@@ -45,6 +47,7 @@ public sealed record AppConfig
         TypographyConfig typography = Typography.Sanitize(notes);
         AnimationConfig animation = Animation.Sanitize(notes);
         HotkeyConfig hotkeys = Hotkeys.Sanitize(notes);
+        LyricsConfig lyrics = Lyrics.Sanitize(notes);
 
         corrections = notes;
 
@@ -54,6 +57,7 @@ public sealed record AppConfig
             Typography = typography,
             Animation = animation,
             Hotkeys = hotkeys,
+            Lyrics = lyrics,
         };
     }
 }
@@ -200,6 +204,27 @@ public sealed record AnimationConfig
         {
             notes.Add($"animation.fadeMs={FadeMs} 超出 [0, 5000]，改用 250");
             return this with { FadeMs = 250 };
+        }
+
+        return this;
+    }
+}
+
+/// <summary>多行歌词模式（P2-2）。</summary>
+public sealed record LyricsConfig
+{
+    /// <summary>
+    /// 一页最多几行。空行本身就是分页点（小节边界），这个值只用来把
+    /// 超长小节切开，免得一屏塞十行谁也看不清。
+    /// </summary>
+    public int LinesPerPage { get; init; } = 4;
+
+    internal LyricsConfig Sanitize(List<string> notes)
+    {
+        if (LinesPerPage is < 1 or > 8)
+        {
+            notes.Add($"lyrics.linesPerPage={LinesPerPage} 超出 [1, 8]，改用 4");
+            return this with { LinesPerPage = 4 };
         }
 
         return this;

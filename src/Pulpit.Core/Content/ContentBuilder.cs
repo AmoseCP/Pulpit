@@ -116,6 +116,75 @@ public static class ContentBuilder
     }
 
     /// <summary>
+    /// 多行歌词（P2-2）：保留换行，**空行即分页点**，无出处标签。
+    /// </summary>
+    /// <remarks>
+    /// <para><b>为什么空行是分页点而不是固定几行一页</b>：歌词天然分小节，
+    /// 而小节长短不一。作词人写下来的空行就是「这里该翻页」，比任何固定行数都准。
+    /// <paramref name="maxLinesPerPage"/> 只用来把超长小节切开——一屏塞十行谁也看不清。</para>
+    /// <para>行内不做修剪以外的任何处理：缩进是排版的一部分，不该被吞掉。
+    /// 只去掉行尾空白（那是编辑器留下的噪音）。</para>
+    /// </remarks>
+    public static DisplayContent FromLyrics(string? text, int maxLinesPerPage = 4)
+    {
+        if (maxLinesPerPage < 1)
+        {
+            maxLinesPerPage = 1;
+        }
+
+        var pages = new List<Page>();
+        var current = new List<string>();
+
+        void Flush()
+        {
+            if (current.Count == 0)
+            {
+                return;
+            }
+
+            pages.Add(new Page(string.Empty, string.Join('\n', current)));
+            current.Clear();
+        }
+
+        // 先把换行统一成 \n 再切。直接对 ['\r','\n'] 做 Split 的话，
+        // Windows 的 \r\n 会切出一个空串，而空串在下面被当成「空行 = 分页点」——
+        // 结果每一行都单独成页。
+        string normalized = (text ?? string.Empty)
+            .Replace("\r\n", "\n", StringComparison.Ordinal)
+            .Replace('\r', '\n');
+
+        string[] lines = normalized.Split('\n');
+
+        foreach (string raw in lines)
+        {
+            string line = raw.TrimEnd();
+
+            if (line.Length == 0)
+            {
+                // 空行 = 小节边界 = 分页点。连续多个空行只算一次。
+                Flush();
+                continue;
+            }
+
+            current.Add(line);
+
+            if (current.Count >= maxLinesPerPage)
+            {
+                Flush();
+            }
+        }
+
+        Flush();
+
+        return new DisplayContent
+        {
+            Kind = ContentKind.Lyrics,
+            Pages = pages,
+            Index = 0,
+        };
+    }
+
+    /// <summary>
     /// 自由文本：单页、无出处标签、原样上屏（P0-4）。
     /// 不做任何清洗或截断——操作员看到的预览就是副屏上的东西。
     /// </summary>
