@@ -1,0 +1,53 @@
+<Window x:Class="Pulpit.App.Views.OverlayWindow"
+        xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+        xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+        Title="Pulpit Overlay"
+        WindowStyle="None"
+        AllowsTransparency="True"
+        Background="Transparent"
+        ShowActivated="False"
+        ShowInTaskbar="False"
+        Topmost="True"
+        ResizeMode="NoResize"
+        WindowStartupLocation="Manual"
+        Focusable="False"
+        UseLayoutRounding="True"
+        SnapsToDevicePixels="True"
+        TextOptions.TextFormattingMode="Ideal"
+        TextOptions.TextRenderingMode="Grayscale">
+
+    <!--
+      RootLayer 的 Opacity 是淡入淡出的唯一动画目标。
+      不动画 Window.Opacity：分层窗口整窗改透明度会让整块表面重新提交，
+      带状区域内元素级动画的开销更可控（L3 已把面积限制在约 1920×324）。
+    -->
+    <Grid x:Name="RootLayer" Opacity="0">
+
+        <!-- 半透明黑底。#B8 = 184/255 ≈ 0.72，对应 config.band.backgroundOpacity 默认值 -->
+        <Border Background="#B8000000">
+            <Grid Margin="64,18,64,18">
+
+                <!--
+                  Stretch=Uniform + StretchDirection=DownOnly：
+                  短内容保持 BodyText 的字号上限（不会把「测试」两个字撑满整条带），
+                  长内容才等比缩小。M2 会把字号上限做成配置项。
+                -->
+                <Viewbox Stretch="Uniform"
+                         StretchDirection="DownOnly"
+                         HorizontalAlignment="Center"
+                         VerticalAlignment="Center">
+                    <TextBlock x:Name="BodyText"
+                               Text="测试"
+                               FontFamily="Microsoft YaHei UI, Microsoft YaHei, SimHei"
+                               FontWeight="SemiBold"
+                               FontSize="72"
+                               Foreground="White"
+                               TextAlignment="Center"
+                               TextWrapping="NoWrap" />
+                </Viewbox>
+
+            </Grid>
+        </Border>
+
+    </Grid>
+</Window>

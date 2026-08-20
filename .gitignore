@@ -1,0 +1,36 @@
+# ---- .NET ----
+bin/
+obj/
+[Dd]ebug/
+[Rr]elease/
+x64/
+publish/
+*.user
+*.suo
+*.userprefs
+*.dll
+*.pdb
+*.exe
+!Assets/*.db
+
+# ---- IDE ----
+.vs/
+.idea/
+*.DotSettings.user
+
+# ---- NuGet ----
+*.nupkg
+packages/
+!packages/build/
+
+# ---- 本机 / 临时 ----
+.DS_Store
+Thumbs.db
+tmp/
+logs/
+*.log
+
+# ---- Claude Code 机器本地配置 ----
+.claude/settings.local.json
+.claude/learnings/
+workflow-system/state/.session.md

@@ -1,0 +1,24 @@
+Microsoft Visual Studio Solution File, Format Version 12.00
+# Visual Studio Version 17
+VisualStudioVersion = 17.9.34714.143
+MinimumVisualStudioVersion = 10.0.40219.1
+Project("{9A19103F-16F7-32B4-A1AB-A5DBAF9AB7BC}") = "Pulpit.App", "src\Pulpit.App\Pulpit.App.csproj", "{3C1D9A2E-5B47-4E6A-9F10-8A2B7C4D1E01}"
+EndProject
+Global
+	GlobalSection(SolutionConfigurationPlatforms) = preSolution
+		Debug|Any CPU = Debug|Any CPU
+		Release|Any CPU = Release|Any CPU
+	EndGlobalSection
+	GlobalSection(ProjectConfigurationPlatforms) = postSolution
+		{3C1D9A2E-5B47-4E6A-9F10-8A2B7C4D1E01}.Debug|Any CPU.ActiveCfg = Debug|Any CPU
+		{3C1D9A2E-5B47-4E6A-9F10-8A2B7C4D1E01}.Debug|Any CPU.Build.0 = Debug|Any CPU
+		{3C1D9A2E-5B47-4E6A-9F10-8A2B7C4D1E01}.Release|Any CPU.ActiveCfg = Release|Any CPU
+		{3C1D9A2E-5B47-4E6A-9F10-8A2B7C4D1E01}.Release|Any CPU.Build.0 = Release|Any CPU
+	EndGlobalSection
+	GlobalSection(SolutionProperties) = preSolution
+		HideSolutionNode = FALSE
+	EndGlobalSection
+	GlobalSection(ExtensibilityGlobals) = postSolution
+		SolutionGuid = {7F2A6B31-9C48-4D5E-8B10-2E4F6A8C9D02}
+	EndGlobalSection
+EndGlobal

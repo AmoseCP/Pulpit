@@ -1,0 +1,18 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <PropertyGroup>
+    <OutputType>WinExe</OutputType>
+    <TargetFramework>net8.0-windows</TargetFramework>
+    <UseWPF>true</UseWPF>
+    <!-- 仅为 System.Windows.Forms.Screen（多屏枚举与物理像素边界）；
+         Pulpit.Core 不得引用 WinForms/WPF 类型。 -->
+    <UseWindowsForms>true</UseWindowsForms>
+    <RootNamespace>Pulpit.App</RootNamespace>
+    <AssemblyName>Pulpit</AssemblyName>
+    <PlatformTarget>x64</PlatformTarget>
+    <!-- L14：PerMonitorV2 DPI 感知，防止换屏后副屏字号被系统拉伸 -->
+    <ApplicationManifest>app.manifest</ApplicationManifest>
+    <SatelliteResourceLanguages>zh-Hans</SatelliteResourceLanguages>
+  </PropertyGroup>
+
+</Project>

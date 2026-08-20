@@ -1,0 +1,14 @@
+<Project>
+
+  <PropertyGroup>
+    <LangVersion>12.0</LangVersion>
+    <Nullable>enable</Nullable>
+    <!-- 刻意关闭隐式 using：Pulpit.App 同时启用 WPF 与 WindowsForms，
+         隐式 using 会让 Application / MessageBox 等类型产生二义性。 -->
+    <ImplicitUsings>disable</ImplicitUsings>
+    <NeutralLanguage>zh-Hans</NeutralLanguage>
+    <EnableWindowsTargeting>true</EnableWindowsTargeting>
+    <ManagePackageVersionsCentrally>false</ManagePackageVersionsCentrally>
+  </PropertyGroup>
+
+</Project>
