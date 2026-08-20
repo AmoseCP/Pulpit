@@ -186,6 +186,46 @@ public sealed class BibleRepository : IBibleRepository, IDisposable
         return results;
     }
 
+    /// <inheritdoc />
+    public IReadOnlyList<SearchableVerse> LoadSearchableVerses(int transId = 1)
+    {
+        ThrowIfDisposed();
+
+        using SqliteCommand cmd = _connection.CreateCommand();
+
+        // 与 Lookup 同样按 merge_head 去重：并节组的文本在组内每个节号上都存了一份，
+        // 不去重的话「神爱世人」这类词会搜出重复行。
+        cmd.CommandText = """
+            SELECT v.book_id, b.name_zh, b.short_zh, v.chapter,
+                   v.merge_head, v.merge_last, v.text_display
+            FROM verses v
+            JOIN books b ON b.id = v.book_id
+            WHERE v.trans_id = $trans
+            GROUP BY v.book_id, v.chapter, v.merge_head
+            ORDER BY v.book_id, v.chapter, v.merge_head;
+            """;
+
+        cmd.Parameters.AddWithValue("$trans", transId);
+
+        // 实测 31021 行、约 25ms、正文合计约 2MB。够小，一次读完最省事。
+        var results = new List<SearchableVerse>(31500);
+
+        using SqliteDataReader reader = ExecuteReader(cmd);
+        while (reader.Read())
+        {
+            results.Add(new SearchableVerse(
+                BookId: reader.GetInt32(0),
+                BookNameZh: reader.GetString(1),
+                BookShortZh: reader.GetString(2),
+                Chapter: reader.GetInt32(3),
+                MergeHead: reader.GetInt32(4),
+                MergeLast: reader.GetInt32(5),
+                TextDisplay: reader.GetString(6)));
+        }
+
+        return results;
+    }
+
     // ---- 把底层 SqliteException 统一包成 BibleDatabaseException ----
 
     private object? Execute(SqliteCommand cmd)

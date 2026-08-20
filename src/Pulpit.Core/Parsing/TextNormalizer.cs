@@ -46,6 +46,42 @@ public static class TextNormalizer
     }
 
     /// <summary>
+    /// 关键词反查用的归一化：NFKC → 去掉**全部空白、标点、符号**。
+    /// </summary>
+    /// <remarks>
+    /// <para>为什么要去标点：操作员记得的是连续的一句话，不会记得逗号落在哪。
+    /// 原文「神爱世人，甚至将他的独生子…」，操作员输入「神爱世人甚至」——
+    /// 不去标点就一条也搜不到。实测这类跨标点短语用 <c>LIKE</c> 命中 0 条，
+    /// 去标点后命中 1 条。</para>
+    /// <para>用 Unicode 分类而不是手列标点表：中文标点散落在
+    /// Po/Ps/Pe/Pi/Pf/Pd 多个分类里（<c>，。、；：？！…—「」『』（）《》〔〕【】“”‘’·</c>），
+    /// 手列必然漏。已核对：NFKC 之后这些字符全部落在 标点/符号/空白 三类之内，
+    /// 而汉字（Lo）、数字（Nd）、拉丁字母一个都不会被误删。</para>
+    /// </remarks>
+    public static string NormalizeForSearch(string? input)
+    {
+        if (string.IsNullOrEmpty(input))
+        {
+            return string.Empty;
+        }
+
+        string nfkc = input.Normalize(NormalizationForm.FormKC);
+
+        var sb = new StringBuilder(nfkc.Length);
+        foreach (char c in nfkc)
+        {
+            if (char.IsWhiteSpace(c) || char.IsPunctuation(c) || char.IsSymbol(c) || char.IsSeparator(c))
+            {
+                continue;
+            }
+
+            sb.Append(c);
+        }
+
+        return sb.ToString();
+    }
+
+    /// <summary>
     /// 别名归一化：NFKC → 去 <c>空格 . - _ ·</c> → 转小写。
     /// 与 <c>book_aliases.alias</c> 列的存储形态一致（SCHEMA.md）。
     /// </summary>

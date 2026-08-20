@@ -62,6 +62,7 @@
                         <Grid.RowDefinitions>
                             <RowDefinition Height="Auto" />
                             <RowDefinition Height="Auto" />
+                            <RowDefinition Height="Auto" />
                         </Grid.RowDefinitions>
                         <Grid.ColumnDefinitions>
                             <ColumnDefinition Width="*" />
@@ -80,11 +81,49 @@
                         <TextBox x:Name="InputBox" Grid.Row="0" Grid.Column="0"
                                  Height="36" FontSize="17" VerticalContentAlignment="Center"
                                  Margin="0,0,8,8" AcceptsReturn="False" MaxLength="500" />
-                        <Button Grid.Row="0" Grid.Column="1" Content="投放 (F9)" Click="OnSend"
-                                Margin="0,0,0,8" MinWidth="110" Height="36" FontWeight="SemiBold" />
+                        <StackPanel Grid.Row="0" Grid.Column="1" Orientation="Horizontal"
+                                    Margin="0,0,0,8">
+                            <Button Content="投放 (F9)" Click="OnSend"
+                                    MinWidth="110" Height="36" FontWeight="SemiBold" />
+                            <Button Content="反查出处" Click="OnSearch"
+                                    MinWidth="90" Height="36" Margin="0"
+                                    ToolTip="记得经文内容但忘了出处时用。把想不起出处的那句话敲进输入框，点这里。" />
+                        </StackPanel>
 
                         <TextBlock x:Name="ModeText" Grid.Row="1" Grid.ColumnSpan="2"
                                    TextWrapping="Wrap" FontSize="14" />
+
+                        <!-- 反查结果：只在搜出东西时出现，平时不占地方 -->
+                        <Grid x:Name="SearchPanel" Grid.Row="2" Grid.ColumnSpan="2"
+                              Visibility="Collapsed" Margin="0,8,0,0">
+                            <Grid.RowDefinitions>
+                                <RowDefinition Height="Auto" />
+                                <RowDefinition Height="Auto" />
+                            </Grid.RowDefinitions>
+
+                            <ListBox x:Name="SearchList" Grid.Row="0"
+                                     MaxHeight="150" MouseDoubleClick="OnSearchActivate"
+                                     ScrollViewer.VerticalScrollBarVisibility="Auto"
+                                     ScrollViewer.HorizontalScrollBarVisibility="Disabled"
+                                     Margin="0,0,0,6">
+                                <ListBox.ItemTemplate>
+                                    <DataTemplate>
+                                        <StackPanel>
+                                            <TextBlock Text="{Binding Label}" FontWeight="SemiBold" />
+                                            <TextBlock Text="{Binding TextDisplay}" TextWrapping="Wrap"
+                                                       Foreground="#FF555555" MaxWidth="560" />
+                                        </StackPanel>
+                                    </DataTemplate>
+                                </ListBox.ItemTemplate>
+                            </ListBox>
+
+                            <StackPanel Grid.Row="1" Orientation="Horizontal">
+                                <Button Content="填入选中" Click="OnSearchFill" MinWidth="90" />
+                                <Button Content="收起" Click="OnSearchClose" MinWidth="70" Margin="0" />
+                                <TextBlock x:Name="SearchHint" VerticalAlignment="Center"
+                                           Margin="12,0,0,0" Foreground="#FF888888" TextWrapping="Wrap" />
+                            </StackPanel>
+                        </Grid>
                     </Grid>
                 </GroupBox>
 

@@ -11,6 +11,7 @@ using System.Windows.Threading;
 using Pulpit.App.Diagnostics;
 using Pulpit.Core.Config;
 using Pulpit.Core.Content;
+using Pulpit.Core.Data;
 
 namespace Pulpit.App.Views;
 
@@ -34,6 +35,7 @@ public partial class ControlWindow : Window
 {
     private readonly OverlayWindow _overlay;
     private readonly ContentComposer _composer;
+    private readonly VerseSearchIndex? _searchIndex;
     private readonly SendHistory _history = new();
     private AppConfig _config;
     private readonly string? _databaseVersion;
@@ -52,12 +54,14 @@ public partial class ControlWindow : Window
     public ControlWindow(
         OverlayWindow overlay,
         ContentComposer composer,
+        VerseSearchIndex? searchIndex,
         AppConfig config,
         string? databaseVersion,
         string? databaseError)
     {
         _overlay = overlay ?? throw new ArgumentNullException(nameof(overlay));
         _composer = composer ?? throw new ArgumentNullException(nameof(composer));
+        _searchIndex = searchIndex;
         _config = config ?? throw new ArgumentNullException(nameof(config));
         _databaseVersion = databaseVersion;
         _useRawText = config.Text.UseRawText;
@@ -247,6 +251,83 @@ public partial class ControlWindow : Window
         }
 
         RefreshDiagnostics();
+    }
+
+    // ================= 关键词反查（P2-1）=================
+
+    /// <summary>
+    /// 用输入框里的内容反查出处。
+    /// </summary>
+    /// <remarks>
+    /// 刻意复用同一个输入框而不是另开一个搜索框：输入框已经会告诉操作员「这是自由文本」，
+    /// 此时旁边那个「反查出处」按钮正是他需要的下一步。两个输入框只会让人分不清该敲哪个。
+    /// <para>首次搜索要建索引（实测约 52ms，31021 行）。同步做即可——
+    /// 50ms 的停顿感知不到，而为它引一层后台线程要处理并发建索引，不值得。</para>
+    /// </remarks>
+    private void OnSearch(object sender, RoutedEventArgs e)
+    {
+        if (_searchIndex is null)
+        {
+            ShowMode("经文库不可用，无法反查", ModeLevel.Warning);
+            return;
+        }
+
+        if (IsComposing)
+        {
+            ShowMode("输入法正在组合候选词，请先确认", ModeLevel.Warning);
+            return;
+        }
+
+        SearchResult result = _searchIndex.Search(InputBox.Text);
+
+        SearchList.ItemsSource = new List<SearchHit>(result.Hits);
+
+        if (result.Hits.Count == 0)
+        {
+            SearchPanel.Visibility = Visibility.Collapsed;
+            ShowMode(result.Notice ?? "反查没有结果", ModeLevel.Warning);
+            return;
+        }
+
+        SearchPanel.Visibility = Visibility.Visible;
+        SearchList.SelectedIndex = 0;
+
+        SearchHint.Text = result.Truncated
+            ? $"共 {result.TotalMatches} 处，只列前 {result.Hits.Count} 条——把关键词写长一点能缩小范围"
+            : $"共 {result.Hits.Count} 处。双击一条即投放，或「填入选中」只填不投。";
+
+        AppLog.Info($"反查「{InputBox.Text}」→ {result.TotalMatches} 处。");
+    }
+
+    /// <summary>双击结果 = 填入并投放。与历史一致：单击只选中，不上屏。</summary>
+    private void OnSearchActivate(object sender, MouseButtonEventArgs e)
+    {
+        if (FillFromSearch() is string input)
+        {
+            Send(input);
+        }
+    }
+
+    /// <summary>只填入输入框，不投放——操作员可能想改成范围再投。</summary>
+    private void OnSearchFill(object sender, RoutedEventArgs e) => FillFromSearch();
+
+    private string? FillFromSearch()
+    {
+        if (SearchList.SelectedItem is not SearchHit hit)
+        {
+            ShowMode("先在反查结果里选一条", ModeLevel.Hint);
+            return null;
+        }
+
+        // InputForm 是用 books.short_zh 拼的，已核对 66 个短称全部能被解析器解析回原书卷。
+        InputBox.Text = hit.InputForm;
+        return hit.InputForm;
+    }
+
+    private void OnSearchClose(object sender, RoutedEventArgs e)
+    {
+        SearchPanel.Visibility = Visibility.Collapsed;
+        SearchList.ItemsSource = null;
     }
 
     // ================= 历史（P1-2）=================

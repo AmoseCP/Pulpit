@@ -21,4 +21,10 @@ public interface IBibleRepository
     /// 否则 民1:20-21 会返回两条一模一样的文本，被分成两页。
     /// </summary>
     IReadOnlyList<VerseText> Lookup(VerseRef reference, int transId = 1);
+
+    /// <summary>
+    /// 一次性读出全库可搜索的正文，供 <see cref="VerseSearchIndex"/> 建索引（P2-1）。
+    /// 同样按 merge_head 去重，所以并节组只出一行。
+    /// </summary>
+    IReadOnlyList<SearchableVerse> LoadSearchableVerses(int transId = 1);
 }

@@ -73,13 +73,18 @@ public partial class App : System.Windows.Application
             _repository,
             _repository is null ? null : new ReferenceParser(_repository));
 
+        // P2-1 关键词反查。索引是懒建的（首次搜索时才花那约 52ms），
+        // 所以这里 new 出来不产生任何启动开销。
+        VerseSearchIndex? searchIndex =
+            _repository is null ? null : new VerseSearchIndex(_repository);
+
         _overlay = new OverlayWindow(_config);
 
         // ShowActivated=False 已在 XAML 声明；Show() 不会夺取焦点。
         _overlay.Show();
 
         _control = new ControlWindow(
-            _overlay, composer, _config, databaseVersion, databaseError);
+            _overlay, composer, searchIndex, _config, databaseVersion, databaseError);
         _control.TargetScreenChanged += OnTargetScreenChanged;
         _control.TextModeChanged += OnTextModeChanged;
         _control.AppearanceChanged += OnAppearanceChanged;

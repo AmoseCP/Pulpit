@@ -25,3 +25,19 @@ public sealed record VerseText(
         ? $"{BookNameZh} {Chapter}:{MergeHead}-{MergeLast}"
         : $"{BookNameZh} {Chapter}:{MergeHead}";
 }
+
+/// <summary>
+/// 关键词反查索引用的一行——只带搜索与显示需要的字段。
+/// </summary>
+/// <remarks>
+/// 刻意不复用 <see cref="VerseText"/>：那个带 <c>TextRaw</c>，
+/// 全库读进来会让内存翻倍，而反查只搜清洗版正文。
+/// </remarks>
+public sealed record SearchableVerse(
+    int BookId,
+    string BookNameZh,
+    string BookShortZh,
+    int Chapter,
+    int MergeHead,
+    int MergeLast,
+    string TextDisplay);
