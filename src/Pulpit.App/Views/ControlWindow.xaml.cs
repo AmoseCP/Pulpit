@@ -560,6 +560,10 @@ public partial class ControlWindow : Window
     {
         string input = InputBox.Text;
 
+        // 默认收起输入预览,只有解析成经文的分支会重新打开——
+        // 自由文本的预览就是输入框本身,再显示一遍是噪音。
+        InputPreviewPanel.Visibility = Visibility.Collapsed;
+
         if (IsComposing)
         {
             // 组合中不做判定也不报错：半成品必然解析失败，此时刷出「未知书卷」是噪音。
@@ -606,6 +610,16 @@ public partial class ControlWindow : Window
         string pages = content.HasMultiplePages ? $"，{content.PageCount} 页" : string.Empty;
 
         ShowMode($"经文 → {label}{pages}", ModeLevel.Scripture);
+
+        // 打字即见正文（P1 需求 2026-08-20）：显示第一页,多页时注明。
+        // 用的就是上面那次 Compose 的结果,与投放路径不可能分叉。
+        // var 而非 Page:此文件引入了 System.Windows.Controls,Page 会二义。
+        var first = content.Pages[0];
+        InputPreviewLabel.Text = content.HasMultiplePages
+            ? $"{first.Label}（第 1/{content.PageCount} 页，投放后 F7/F8 翻页）"
+            : first.Label;
+        InputPreviewText.Text = first.Body;
+        InputPreviewPanel.Visibility = Visibility.Visible;
     }
 
     // ================= 外观（P1-3）=================

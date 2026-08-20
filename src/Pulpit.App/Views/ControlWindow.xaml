@@ -64,6 +64,7 @@
                             <RowDefinition Height="Auto" />
                             <RowDefinition Height="Auto" />
                             <RowDefinition Height="Auto" />
+                            <RowDefinition Height="Auto" />
                         </Grid.RowDefinitions>
                         <Grid.ColumnDefinitions>
                             <ColumnDefinition Width="*" />
@@ -94,8 +95,22 @@
                         <TextBlock x:Name="ModeText" Grid.Row="1" Grid.ColumnSpan="2"
                                    TextWrapping="Wrap" FontSize="14" />
 
+                        <!-- 输入预览：解析成经文时打字即见正文，不用投放就能核对选没选错节。
+                             判定与投放共用同一次 Compose(RefreshMode),不会分叉。 -->
+                        <Border x:Name="InputPreviewPanel" Grid.Row="2" Grid.ColumnSpan="2"
+                                Visibility="Collapsed" Margin="0,6,0,0"
+                                Background="#FFF6F2E4" BorderBrush="#FFD8CFB4" BorderThickness="1"
+                                CornerRadius="3" Padding="9,6">
+                            <StackPanel>
+                                <TextBlock x:Name="InputPreviewLabel" FontWeight="SemiBold"
+                                           FontSize="13" Foreground="#FF8A6D2F" Margin="0,0,0,2" />
+                                <TextBlock x:Name="InputPreviewText" TextWrapping="Wrap" FontSize="14"
+                                           MaxHeight="76" TextTrimming="CharacterEllipsis" />
+                            </StackPanel>
+                        </Border>
+
                         <!-- 反查结果：只在搜出东西时出现，平时不占地方 -->
-                        <Grid x:Name="SearchPanel" Grid.Row="2" Grid.ColumnSpan="2"
+                        <Grid x:Name="SearchPanel" Grid.Row="3" Grid.ColumnSpan="2"
                               Visibility="Collapsed" Margin="0,8,0,0">
                             <Grid.RowDefinitions>
                                 <RowDefinition Height="Auto" />
