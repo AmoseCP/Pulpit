@@ -16,6 +16,10 @@
     <!-- 教会标志(红十字 + 翻开的圣经),由 docs/logo.png 同源的矢量重绘生成。
          WPF 窗口标题栏与任务栏默认取 exe 图标,无需逐窗口设置 Icon。 -->
     <ApplicationIcon>Assets\pulpit.ico</ApplicationIcon>
+    <!-- 版本号是安装版/Portable 版打包的唯一事实来源(tools/package.ps1 从这里读) -->
+    <Version>1.0.0</Version>
+    <Product>Pulpit</Product>
+    <AssemblyTitle>Pulpit — 经文投屏</AssemblyTitle>
   </PropertyGroup>
 
   <ItemGroup>

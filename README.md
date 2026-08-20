@@ -60,6 +60,22 @@ dotnet run --project src\Pulpit.App\Pulpit.App.csproj    # 跑起来
 产物 `publish\win-x64\Pulpit.exe`。经文库嵌在 exe 里，首次运行解出到
 `%LOCALAPPDATA%\Pulpit\bible_cuv.db`。
 
+### 分发打包（两个版本）
+
+```powershell
+.\tools\package.ps1
+```
+
+先跑全部单测（不过不发布），然后一次产出：
+
+| 产物 | 形态 |
+|---|---|
+| `publish\Pulpit-<版本>-portable.zip` | **Portable**：解压后双击 `Pulpit.exe` 即用，附快速上手卡与说明 |
+| `publish\Pulpit-Setup-<版本>.exe` | **安装版**：按用户安装、**无需管理员**（教会机器上的操作员账号可自行安装），含开始菜单/桌面快捷方式与卸载器；卸载保留 `%LOCALAPPDATA%\Pulpit` 的配置、经文库与日志，重装不丢设置 |
+
+安装版的编译需要 Inno Setup 6（`winget install --id JRSoftware.InnoSetup -e`），
+缺了会跳过安装版、Portable 照常产出。版本号唯一来源是 `Pulpit.App.csproj` 的 `<Version>`。
+
 `Pulpit.Core` 与它的测试是**纯 `net8.0`**（不引用任何 WPF/WinForms 类型），
 所以 `dotnet test` 在 macOS / Linux 上也能跑；只有 `Pulpit.App` 必须在 Windows 上构建。
 
