@@ -15,10 +15,16 @@ namespace Pulpit.App;
 
 public partial class App : System.Windows.Application
 {
+    private readonly ConfigStore _configStore = new();
+
+    private AppConfig _config = new();
+    private SingleInstanceGuard? _singleInstance;
     private OverlayWindow? _overlay;
     private ControlWindow? _control;
     private BibleRepository? _repository;
     private GlobalHotkeyService? _hotkeys;
+    private DispatcherTimer? _displayDebounce;
+    private bool _displayHooked;
 
     protected override void OnStartup(StartupEventArgs e)
     {
@@ -30,32 +36,80 @@ public partial class App : System.Windows.Application
 
         base.OnStartup(e);
 
+        // L15 / P0-14：两份实例会争抢全局热键，第二份注册会静默失败。
+        if (!SingleInstanceGuard.TryAcquire(out _singleInstance))
+        {
+            AppLog.Warn("已有一份 Pulpit 在运行，本次启动被拒绝。");
+
+            // 这是启动期的**主动**提示，不是未处理异常对话框——P0-14 要求有提示。
+            MessageBox.Show(
+                "Pulpit 已经在运行了。\n\n两份实例会争抢全局热键（F7–F12），"
+                + "第二份的注册会静默失败，按键就没反应了。\n请使用已经打开的那一个窗口。",
+                "Pulpit 已在运行",
+                MessageBoxButton.OK,
+                MessageBoxImage.Information);
+
+            Shutdown();
+            return;
+        }
+
         AppLog.Info("Pulpit 启动。");
 
-        // M5 会换成从 %LOCALAPPDATA%\Pulpit\config.json 读取；M2 阶段先用内置默认值。
-        AppConfig config = new AppConfig().Sanitize(out IReadOnlyList<string> corrections);
-        foreach (string note in corrections)
+        _config = _configStore.Load(out IReadOnlyList<string> notes);
+        foreach (string note in notes)
         {
-            AppLog.Warn("配置项被修正：" + note);
+            AppLog.Warn("配置：" + note);
         }
+
+        AppLog.Info($"配置文件：{_configStore.FilePath}");
 
         _repository = OpenRepository(out string? databaseError);
         string? databaseVersion = _repository?.SchemaVersion;
 
         ReferenceParser? parser = _repository is null ? null : new ReferenceParser(_repository);
 
-        _overlay = new OverlayWindow(config);
+        _overlay = new OverlayWindow(_config);
 
         // ShowActivated=False 已在 XAML 声明；Show() 不会夺取焦点。
         _overlay.Show();
 
         _control = new ControlWindow(
-            _overlay, _repository, parser, config, databaseVersion, databaseError);
+            _overlay, _repository, parser, _config, databaseVersion, databaseError);
+        _control.TargetScreenChanged += OnTargetScreenChanged;
         _control.Closed += OnControlClosed;
         _control.Show();
 
-        RegisterHotkeys(config);
+        RegisterHotkeys(_config);
+        HookDisplayChanges();
     }
+
+    // ================= 经文库 =================
+
+    /// <summary>
+    /// 打开经文库。失败**不阻止启动**——叠加层与自由文本仍然可用，
+    /// 错误信息交给控制窗口显示（副屏上绝不出现错误信息）。
+    /// </summary>
+    private static BibleRepository? OpenRepository(out string? error)
+    {
+        error = null;
+
+        string path = Path.Combine(AppContext.BaseDirectory, "Assets", "bible_cuv.db");
+
+        try
+        {
+            var repository = new BibleRepository(path);
+            AppLog.Info($"经文库已打开：{path}（schema_version={repository.SchemaVersion}）");
+            return repository;
+        }
+        catch (BibleDatabaseException ex)
+        {
+            error = ex.Message;
+            AppLog.Error("经文库打开失败，经文查询不可用（自由文本仍可用）。", ex);
+            return null;
+        }
+    }
+
+    // ================= 热键 =================
 
     /// <summary>
     /// 注册全局热键。注册失败**不阻止启动**——按钮仍然可用，
@@ -118,33 +172,84 @@ public partial class App : System.Windows.Application
         }
     }
 
-    /// <summary>
-    /// 打开经文库。失败**不阻止启动**——叠加层与自由文本仍然可用，
-    /// 错误信息交给控制窗口显示（副屏上绝不出现错误信息）。
-    /// </summary>
-    private static BibleRepository? OpenRepository(out string? error)
+    // ================= 显示器变更（P0-13）=================
+
+    private void HookDisplayChanges()
     {
-        error = null;
-
-        string path = Path.Combine(AppContext.BaseDirectory, "Assets", "bible_cuv.db");
-
-        try
+        _displayDebounce = new DispatcherTimer(DispatcherPriority.Background)
         {
-            var repository = new BibleRepository(path);
-            AppLog.Info($"经文库已打开：{path}（schema_version={repository.SchemaVersion}）");
-            return repository;
+            // 拔插 HDMI 会连发好几次事件，且系统那边的屏幕枚举要过一会儿才稳定。
+            Interval = TimeSpan.FromMilliseconds(700),
+        };
+
+        _displayDebounce.Tick += OnDisplayDebounceTick;
+
+        Microsoft.Win32.SystemEvents.DisplaySettingsChanged += OnDisplaySettingsChanged;
+        _displayHooked = true;
+    }
+
+    private void OnDisplaySettingsChanged(object? sender, EventArgs e)
+    {
+        // SystemEvents 在它自己的线程上回调，必须切回 UI 线程才能碰窗口。
+        _ = Dispatcher.InvokeAsync(() =>
+        {
+            _displayDebounce?.Stop();
+            _displayDebounce?.Start();
+        });
+    }
+
+    private void OnDisplayDebounceTick(object? sender, EventArgs e)
+    {
+        _displayDebounce?.Stop();
+
+        int count = System.Windows.Forms.Screen.AllScreens.Length;
+        AppLog.Info($"检测到显示器配置变更，当前 {count} 块屏，重新定位叠加层。");
+
+        // 目标屏不在了会退回主屏而不是崩（ResolveTargetScreen 内部处理）。
+        _overlay?.Reposition();
+        _control?.NotifyScreensChanged();
+    }
+
+    // ================= 配置持久化（P0-12）=================
+
+    private void OnTargetScreenChanged(object? sender, EventArgs e)
+    {
+        if (_overlay is null)
+        {
+            return;
         }
-        catch (BibleDatabaseException ex)
+
+        _config = _config with { TargetScreenDeviceName = _overlay.TargetScreenDeviceName };
+
+        if (_configStore.TrySave(_config, out string? error))
         {
-            error = ex.Message;
-            AppLog.Error("经文库打开失败，经文查询不可用（自由文本仍可用）。", ex);
-            return null;
+            AppLog.Info($"目标屏已记住：{_config.TargetScreenDeviceName}");
+        }
+        else
+        {
+            // 写不进去不是停机理由——只是下次启动记不住。
+            AppLog.Warn($"目标屏写入配置失败（下次启动会记不住）：{error}");
         }
     }
+
+    // ================= 退出 =================
 
     private void OnControlClosed(object? sender, EventArgs e)
     {
         AppLog.Info("控制窗口关闭，进程退出。");
+
+        if (_displayHooked)
+        {
+            Microsoft.Win32.SystemEvents.DisplaySettingsChanged -= OnDisplaySettingsChanged;
+            _displayHooked = false;
+        }
+
+        if (_displayDebounce is not null)
+        {
+            _displayDebounce.Stop();
+            _displayDebounce.Tick -= OnDisplayDebounceTick;
+            _displayDebounce = null;
+        }
 
         // 热键先注销：留着不放会让下一次启动注册失败。
         _hotkeys?.Dispose();
@@ -154,9 +259,12 @@ public partial class App : System.Windows.Application
         _overlay?.Close();
 
         _repository?.Dispose();
+        _singleInstance?.Dispose();
 
         Shutdown();
     }
+
+    // ================= 全局异常 =================
 
     /// <summary>
     /// CLAUDE.md「绝不允许的行为」第一条：直播中弹未处理异常对话框 = 事故。

@@ -151,6 +151,8 @@
                         <StackPanel Orientation="Horizontal" Margin="0,0,0,6">
                             <Button x:Name="StressButton" Content="Show/Clear ×200（验句柄与 Z 序）"
                                     Click="OnStress" MinWidth="240" />
+                            <Button Content="强制抛异常（验全局捕获）" Click="OnForceException"
+                                    MinWidth="200" Margin="0" />
                         </StackPanel>
 
                         <TextBlock x:Name="StressReport" Style="{StaticResource Mono}"

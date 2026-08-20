@@ -96,8 +96,11 @@ public partial class ControlWindow : Window
         InputBox.Focus();
     }
 
-    /// <summary>热键子系统的状态文本，由 <c>App</c> 在 M4 注册完成后写入。</summary>
-    public string HotkeyStatus { get; set; } = "热键：未启用（M4）";
+    /// <summary>操作员改了目标屏。<c>App</c> 据此把设备名写进配置（P0-12）。</summary>
+    public event EventHandler? TargetScreenChanged;
+
+    /// <summary>热键子系统的状态文本，由 <c>App</c> 在注册完成后写入。</summary>
+    public string HotkeyStatus { get; set; } = "热键：未启用";
 
     /// <summary>输入法是否正在组合候选词。</summary>
     public bool IsComposing { get; private set; }
@@ -423,8 +426,32 @@ public partial class ControlWindow : Window
             AppLog.Info($"叠加层移到 {choice.Screen.DeviceName}。");
             RefreshScreens();
             RefreshDiagnostics();
+
+            TargetScreenChanged?.Invoke(this, EventArgs.Empty);
         }
     }
+
+    /// <summary>
+    /// P0-13：显示器配置变更后由 <c>App</c> 调用，刷新屏幕列表与状态。
+    /// 叠加层的重新定位由 <c>App</c> 负责，这里只管界面。
+    /// </summary>
+    public void NotifyScreensChanged()
+    {
+        RefreshScreens();
+        RefreshDiagnostics();
+        ShowMode($"显示器配置已变更，当前 {System.Windows.Forms.Screen.AllScreens.Length} 块屏", ModeLevel.Warning);
+    }
+
+    /// <summary>
+    /// M5 验收：强制抛异常，程序继续运行，日志有记录，副屏无变化。
+    /// </summary>
+    /// <remarks>
+    /// 直接在事件处理器里抛：异常会走到 <c>App.DispatcherUnhandledException</c>，
+    /// 那里写日志并把 <c>Handled</c> 置真，进程继续。**副屏不应有任何变化**——
+    /// 这正是「叠加层与控制窗解耦」要保证的事。
+    /// </remarks>
+    private void OnForceException(object sender, RoutedEventArgs e)
+        => throw new InvalidOperationException("这是 M5 验收用的人为异常，用来验证全局异常捕获。");
 
     // ================= 压力测试（M2 验收）=================
 
