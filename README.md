@@ -18,7 +18,7 @@
 | **M3** | 控制窗口与输入（IME 安全） | 🟡 **代码已交付，未编译验证** |
 | **M4** | 全局热键与分页 | 🟡 **代码已交付，未编译验证** |
 | **M5** | 配置与健壮性 | 🟡 **代码已交付，未编译验证** |
-| M6 | 打包与实战彩排 | ⬜ |
+| **M6** | 打包与实战彩排 | 🟡 **打包已就绪，彩排待真机** |
 
 **M0 的 9 项真机验收已按操作员决定暂时搁置**（2026-08-20），开发继续往下走。
 验收清单仍在 [`docs/M0-验收清单.md`](docs/M0-验收清单.md)，随时可以补做。
@@ -36,9 +36,18 @@
 
 ```powershell
 dotnet build Pulpit.sln -c Debug
-dotnet test tests\Pulpit.Core.Tests            # M1 验收：§6 全部用例
-dotnet run --project src\Pulpit.App\Pulpit.App.csproj   # M0 尖刺
+dotnet test tests\Pulpit.Core.Tests                      # Core 验收（§6 全部用例 + 配置 + 热键白名单）
+dotnet run --project src\Pulpit.App\Pulpit.App.csproj    # 跑起来
 ```
+
+发布单文件（未装 .NET 运行时的干净 Windows 上双击可用）：
+
+```powershell
+.\publish.cmd
+```
+
+产物 `publish\win-x64\Pulpit.exe`。经文库嵌在 exe 里，首次运行解出到
+`%LOCALAPPDATA%\Pulpit\bible_cuv.db`。
 
 `Pulpit.Core` 与它的测试是**纯 `net8.0`**（不引用任何 WPF/WinForms 类型），
 所以 `dotnet test` 在 macOS / Linux 上也能跑；只有 `Pulpit.App` 必须在 Windows 上构建。
@@ -53,6 +62,19 @@ dotnet run --project src\Pulpit.App\Pulpit.App.csproj   # M0 尖刺
 | `SCHEMA.md` | `bible_cuv.db` 表结构、并节语义、文本清洗规则、常用查询 |
 | `CLAUDE.md` | 给 AI 代理的项目约定；「最容易做错的五件事」 |
 | `docs/M0-验收清单.md` | M0 现场验收表，含帧率判读标准与失败回报格式 |
+| `docs/快速上手卡.md` | **给志愿者的一页 A4**：五个键、怎么打经文、出错怎么看 |
+
+---
+
+## 三条锁定决策在代码里的落点
+
+改动这些地方前先读 `DEVELOPMENT_PLAN.md` §1。
+
+| 决策 | 落点 | 怎么被守住 |
+|---|---|---|
+| **L7** 只许注册 F7 F8 F9 F10 F12 | `HotkeyWhitelist` + `GlobalHotkeyService.ToVirtualKey` | 两道闸：白名单过键名，映射表里只有那五个键。加键位必须同时改两处 |
+| **L8** 送出键不是 Enter | `ControlWindow.xaml` | `AcceptsReturn=False` + **全窗口无任何 `IsDefault="True"` 按钮**。加一个默认按钮就等于把送出键绑回 Enter |
+| **L4** 叠加层从不 Close | `OverlayWindow.OnClosing` | 拦掉一切关闭请求，只有 `AllowCloseOnShutdown()` 之后才放行 |
 
 ---
 

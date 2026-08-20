@@ -20,9 +20,11 @@
   </ItemGroup>
 
   <ItemGroup>
-    <!-- 经文库随包。用 Link 引用仓库根的那一份，不在 git 里放第二份 7MB 副本。
-         M6 会改成嵌入资源 + 首次运行复制到 %LOCALAPPDATA%\Pulpit\。 -->
-    <Content Include="..\..\bible_cuv.db" Link="Assets\bible_cuv.db" CopyToOutputDirectory="PreserveNewest" />
+    <!-- 经文库嵌成资源（M6）。单文件发布时 exe 旁边没有别的文件，而 SQLite 需要
+         真实文件路径，所以首次运行由 DatabaseProvisioner 解出到 %LOCALAPPDATA%\Pulpit\。
+         LogicalName 显式钉住，不依赖 Link 路径推导出的名字。
+         Include 直接引用仓库根那一份，git 里不放第二份 7MB 副本。 -->
+    <EmbeddedResource Include="..\..\bible_cuv.db" LogicalName="Pulpit.App.Assets.bible_cuv.db" />
   </ItemGroup>
 
 </Project>

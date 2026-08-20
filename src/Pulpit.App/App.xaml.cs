@@ -1,9 +1,9 @@
 using System;
 using System.Collections.Generic;
-using System.IO;
 using System.Threading.Tasks;
 using System.Windows;
 using System.Windows.Threading;
+using Pulpit.App.Data;
 using Pulpit.App.Diagnostics;
 using Pulpit.App.Interop;
 using Pulpit.App.Views;
@@ -91,9 +91,14 @@ public partial class App : System.Windows.Application
     /// </summary>
     private static BibleRepository? OpenRepository(out string? error)
     {
-        error = null;
+        // M6：随包嵌入 + 首次运行解出到 %LOCALAPPDATA%\Pulpit\。
+        string? path = DatabaseProvisioner.EnsureLocalCopy(out error);
 
-        string path = Path.Combine(AppContext.BaseDirectory, "Assets", "bible_cuv.db");
+        if (path is null)
+        {
+            AppLog.Error("经文库无法就位，经文查询不可用（自由文本仍可用）。" + error);
+            return null;
+        }
 
         try
         {
