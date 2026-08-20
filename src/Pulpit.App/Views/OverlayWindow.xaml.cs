@@ -104,7 +104,17 @@ public partial class OverlayWindow : Window, IOverlayController
         ApplyTheme();
         Reposition();
         ApplyGeometry();
-        FitBody();
+
+        // 必须走完整的 RenderCurrentPage 而不是只 FitBody：
+        // 页脚预留高度是按 MaxFontSize 算的，只重算字号会留下一个按旧上限预留的页脚。
+        if (_content is not null)
+        {
+            RenderCurrentPage();
+        }
+        else
+        {
+            FitBody();
+        }
     }
 
     private void ApplyTheme()

@@ -35,7 +35,7 @@ public partial class ControlWindow : Window
     private readonly OverlayWindow _overlay;
     private readonly ContentComposer _composer;
     private readonly SendHistory _history = new();
-    private readonly AppConfig _config;
+    private AppConfig _config;
     private readonly string? _databaseVersion;
     private readonly DispatcherTimer _poll;
     private readonly Stopwatch _uptime = Stopwatch.StartNew();
@@ -45,6 +45,9 @@ public partial class ControlWindow : Window
     private bool _hasFadeSample;
     private bool _useRawText;
     private string? _lastSentInput;
+
+    /// <summary>初始化外观控件时抑制回调，否则一赋值就当成操作员改动。</summary>
+    private bool _loadingAppearance;
 
     public ControlWindow(
         OverlayWindow overlay,
@@ -77,6 +80,7 @@ public partial class ControlWindow : Window
 
         RawTextToggle.IsChecked = _useRawText;
         RefreshHistory();
+        LoadAppearanceControls();
 
         AttachPreview();
         AttachImeTracking();
@@ -103,6 +107,14 @@ public partial class ControlWindow : Window
 
     /// <summary>操作员切换了原文/清洗版。<c>App</c> 据此写 <c>text.useRawText</c>（P1-4）。</summary>
     public event EventHandler? TextModeChanged;
+
+    /// <summary>
+    /// 外观被改动（P1-3）。<c>App</c> 据此调 <c>OverlayWindow.ApplyConfig</c>，**不落盘**。
+    /// </summary>
+    public event EventHandler<AppConfig>? AppearanceChanged;
+
+    /// <summary>操作员点了「保存为默认」。<c>App</c> 据此落盘。</summary>
+    public event EventHandler? AppearanceSaveRequested;
 
     /// <summary>当前是否显示原文（<c>text_raw</c>）。</summary>
     public bool UseRawText => _useRawText;
@@ -451,6 +463,169 @@ public partial class ControlWindow : Window
         string pages = content.HasMultiplePages ? $"，{content.PageCount} 页" : string.Empty;
 
         ShowMode($"经文 → {label}{pages}", ModeLevel.Scripture);
+    }
+
+    // ================= 外观（P1-3）=================
+
+    /// <summary>
+    /// 把当前配置灌进外观控件。
+    /// </summary>
+    /// <remarks>
+    /// <c>_loadingAppearance</c> 是必须的：给 Slider 赋值会触发 ValueChanged，
+    /// 没有这个闸门的话，窗口一打开就会被当成「操作员改了外观」而回写配置。
+    /// </remarks>
+    private void LoadAppearanceControls()
+    {
+        _loadingAppearance = true;
+
+        try
+        {
+            MaxFontSlider.Value = _config.Typography.MaxFontSize;
+            OpacitySlider.Value = _config.Band.BackgroundOpacity;
+            HeightSlider.Value = _config.Band.HeightPercent;
+            FadeSlider.Value = _config.Animation.FadeMs;
+
+            bool bottom = !string.Equals(
+                _config.Band.VerticalAnchor, "top", StringComparison.OrdinalIgnoreCase);
+
+            AnchorBottom.IsChecked = bottom;
+            AnchorTop.IsChecked = !bottom;
+
+            LoadFontList();
+
+            RefreshAppearanceLabels();
+        }
+        finally
+        {
+            _loadingAppearance = false;
+        }
+    }
+
+    private void LoadFontList()
+    {
+        if (FontList.Items.Count == 0)
+        {
+            var families = new List<string>();
+
+            foreach (System.Windows.Media.FontFamily family in System.Windows.Media.Fonts.SystemFontFamilies)
+            {
+                families.Add(family.Source);
+            }
+
+            families.Sort(StringComparer.CurrentCulture);
+
+            // 配置里的字体可能没装在这台机器上——也要列出来，否则一打开面板
+            // 选中项就被悄悄换成别的字体了。
+            if (!families.Contains(_config.Typography.FontFamily))
+            {
+                families.Insert(0, _config.Typography.FontFamily);
+            }
+
+            FontList.ItemsSource = families;
+        }
+
+        FontList.SelectedItem = _config.Typography.FontFamily;
+    }
+
+    private void RefreshAppearanceLabels()
+    {
+        MaxFontValue.Text = string.Format(CultureInfo.InvariantCulture, "{0:F0} px", MaxFontSlider.Value);
+        OpacityValue.Text = string.Format(CultureInfo.InvariantCulture, "{0:P0}", OpacitySlider.Value);
+        HeightValue.Text = string.Format(CultureInfo.InvariantCulture, "{0:P0}", HeightSlider.Value);
+
+        FadeValue.Text = FadeSlider.Value < 1
+            ? "直切"
+            : string.Format(CultureInfo.InvariantCulture, "{0:F0} ms", FadeSlider.Value);
+    }
+
+    private void OnAppearanceValueChanged(
+        object sender, RoutedPropertyChangedEventArgs<double> e) => ApplyAppearance();
+
+    private void OnAppearanceToggled(object sender, RoutedEventArgs e) => ApplyAppearance();
+
+    /// <summary>
+    /// 字体下拉。刻意给它一个**精确签名**的处理器：<c>SelectionChanged</c> 的委托是
+    /// <c>(object, SelectionChangedEventArgs)</c>，复用 <c>RoutedEventArgs</c> 版本要靠
+    /// 委托逆变，能不能过 XAML 标记编译器不值得赌。
+    /// </summary>
+    private void OnFontChanged(object sender, SelectionChangedEventArgs e) => ApplyAppearance();
+
+    /// <summary>
+    /// 把控件上的值组装成新配置并实时应用。**不落盘**——落盘要操作员点「保存为默认」。
+    /// </summary>
+    /// <remarks>
+    /// 滑块拖动时 ValueChanged 每帧都触发，每次都写一遍 config.json 是没必要的磁盘噪音；
+    /// 而且彩排时来回试参数，不该每一步都改掉默认值。
+    /// </remarks>
+    private void ApplyAppearance()
+    {
+        if (_loadingAppearance)
+        {
+            return;
+        }
+
+        RefreshAppearanceLabels();
+
+        string fontFamily = FontList.SelectedItem as string ?? _config.Typography.FontFamily;
+
+        AppConfig candidate = _config with
+        {
+            Band = _config.Band with
+            {
+                HeightPercent = HeightSlider.Value,
+                BackgroundOpacity = OpacitySlider.Value,
+                VerticalAnchor = AnchorTop.IsChecked == true ? "top" : "bottom",
+            },
+            Typography = _config.Typography with
+            {
+                MaxFontSize = MaxFontSlider.Value,
+                FontFamily = fontFamily,
+            },
+            Animation = _config.Animation with
+            {
+                FadeMs = (int)Math.Round(FadeSlider.Value),
+            },
+        };
+
+        // Sanitize 是免费的保险：滑块范围本就在合法区间内，但万一以后改了范围，
+        // 这里会把越界值夹回来而不是让副屏出怪样子。
+        _config = candidate.Sanitize(out IReadOnlyList<string> corrections);
+
+        foreach (string note in corrections)
+        {
+            AppLog.Warn("外观设置被修正：" + note);
+        }
+
+        AppearanceChanged?.Invoke(this, _config);
+
+        AppearanceHint.Text = "已实时应用；点「保存为默认」才会记住";
+    }
+
+    private void OnSaveAppearance(object sender, RoutedEventArgs e)
+    {
+        AppearanceSaveRequested?.Invoke(this, EventArgs.Empty);
+        AppearanceHint.Text = "已保存为默认";
+        AppLog.Info("外观设置已保存为默认。");
+    }
+
+    /// <summary>恢复到内置默认值（只重置外观相关字段，不动目标屏与正文来源）。</summary>
+    private void OnResetAppearance(object sender, RoutedEventArgs e)
+    {
+        var defaults = new AppConfig();
+
+        _config = _config with
+        {
+            Band = defaults.Band,
+            Typography = defaults.Typography,
+            Animation = defaults.Animation,
+        };
+
+        LoadAppearanceControls();
+
+        AppearanceChanged?.Invoke(this, _config);
+
+        AppearanceHint.Text = "已恢复出厂设置；点「保存为默认」才会记住";
+        AppLog.Info("外观设置已恢复出厂值。");
     }
 
     // ================= 屏幕 =================

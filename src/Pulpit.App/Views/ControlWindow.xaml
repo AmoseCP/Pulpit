@@ -46,6 +46,7 @@
                     <RowDefinition Height="Auto" />
                     <RowDefinition Height="Auto" />
                     <RowDefinition Height="Auto" />
+                    <RowDefinition Height="Auto" />
                 </Grid.RowDefinitions>
 
                 <!-- 数据库告警条：仅在经文库打不开时出现 -->
@@ -182,8 +183,83 @@
                     </Grid>
                 </GroupBox>
 
-                <!-- ⑥ 诊断：现场用不到，默认折叠 -->
-                <Expander Grid.Row="6" Header="⑥ 诊断与自检（现场无需展开）" Margin="0,0,0,10">
+                <!-- ⑥ 外观：彩排时调，现场不动，默认折叠 -->
+                <Expander Grid.Row="6" Header="⑥ 外观（彩排时调，改动实时反映到副屏与预览）"
+                          Margin="0,0,0,10">
+                    <Grid Margin="4,8,0,0">
+                        <Grid.ColumnDefinitions>
+                            <ColumnDefinition Width="Auto" />
+                            <ColumnDefinition Width="*" />
+                            <ColumnDefinition Width="Auto" />
+                        </Grid.ColumnDefinitions>
+                        <Grid.RowDefinitions>
+                            <RowDefinition Height="Auto" />
+                            <RowDefinition Height="Auto" />
+                            <RowDefinition Height="Auto" />
+                            <RowDefinition Height="Auto" />
+                            <RowDefinition Height="Auto" />
+                            <RowDefinition Height="Auto" />
+                            <RowDefinition Height="Auto" />
+                        </Grid.RowDefinitions>
+
+                        <TextBlock Grid.Row="0" Grid.Column="0" Text="字号上限" VerticalAlignment="Center" Margin="0,0,10,6" />
+                        <Slider x:Name="MaxFontSlider" Grid.Row="0" Grid.Column="1"
+                                Minimum="40" Maximum="200" TickFrequency="10" IsSnapToTickEnabled="True"
+                                VerticalAlignment="Center" Margin="0,0,10,6"
+                                ValueChanged="OnAppearanceValueChanged" />
+                        <TextBlock x:Name="MaxFontValue" Grid.Row="0" Grid.Column="2" MinWidth="64"
+                                   VerticalAlignment="Center" Margin="0,0,0,6" />
+
+                        <TextBlock Grid.Row="1" Grid.Column="0" Text="底色不透明度" VerticalAlignment="Center" Margin="0,0,10,6" />
+                        <Slider x:Name="OpacitySlider" Grid.Row="1" Grid.Column="1"
+                                Minimum="0" Maximum="1" TickFrequency="0.02" IsSnapToTickEnabled="True"
+                                VerticalAlignment="Center" Margin="0,0,10,6"
+                                ValueChanged="OnAppearanceValueChanged" />
+                        <TextBlock x:Name="OpacityValue" Grid.Row="1" Grid.Column="2" MinWidth="64"
+                                   VerticalAlignment="Center" Margin="0,0,0,6" />
+
+                        <TextBlock Grid.Row="2" Grid.Column="0" Text="带状高度" VerticalAlignment="Center" Margin="0,0,10,6" />
+                        <Slider x:Name="HeightSlider" Grid.Row="2" Grid.Column="1"
+                                Minimum="0.15" Maximum="0.60" TickFrequency="0.01" IsSnapToTickEnabled="True"
+                                VerticalAlignment="Center" Margin="0,0,10,6"
+                                ValueChanged="OnAppearanceValueChanged" />
+                        <TextBlock x:Name="HeightValue" Grid.Row="2" Grid.Column="2" MinWidth="64"
+                                   VerticalAlignment="Center" Margin="0,0,0,6" />
+
+                        <TextBlock Grid.Row="3" Grid.Column="0" Text="淡入淡出" VerticalAlignment="Center" Margin="0,0,10,6" />
+                        <Slider x:Name="FadeSlider" Grid.Row="3" Grid.Column="1"
+                                Minimum="0" Maximum="600" TickFrequency="25" IsSnapToTickEnabled="True"
+                                VerticalAlignment="Center" Margin="0,0,10,6"
+                                ValueChanged="OnAppearanceValueChanged" />
+                        <TextBlock x:Name="FadeValue" Grid.Row="3" Grid.Column="2" MinWidth="64"
+                                   VerticalAlignment="Center" Margin="0,0,0,6" />
+
+                        <TextBlock Grid.Row="4" Grid.Column="0" Text="垂直位置" VerticalAlignment="Center" Margin="0,0,10,6" />
+                        <StackPanel Grid.Row="4" Grid.Column="1" Grid.ColumnSpan="2"
+                                    Orientation="Horizontal" Margin="0,0,0,6">
+                            <RadioButton x:Name="AnchorBottom" Content="贴底（默认）" GroupName="Anchor"
+                                         Click="OnAppearanceToggled" Margin="0,0,16,0" />
+                            <RadioButton x:Name="AnchorTop" Content="贴顶" GroupName="Anchor"
+                                         Click="OnAppearanceToggled" />
+                        </StackPanel>
+
+                        <TextBlock Grid.Row="5" Grid.Column="0" Text="字体" VerticalAlignment="Center" Margin="0,0,10,10" />
+                        <ComboBox x:Name="FontList" Grid.Row="5" Grid.Column="1" Grid.ColumnSpan="2"
+                                  Height="26" VerticalContentAlignment="Center" Margin="0,0,0,10"
+                                  MaxDropDownHeight="220"
+                                  SelectionChanged="OnFontChanged" />
+
+                        <StackPanel Grid.Row="6" Grid.Column="0" Grid.ColumnSpan="3" Orientation="Horizontal">
+                            <Button Content="保存为默认" Click="OnSaveAppearance" MinWidth="110" />
+                            <Button Content="恢复出厂设置" Click="OnResetAppearance" MinWidth="110" />
+                            <TextBlock x:Name="AppearanceHint" VerticalAlignment="Center"
+                                       Margin="12,0,0,0" Foreground="#FF888888" TextWrapping="Wrap" />
+                        </StackPanel>
+                    </Grid>
+                </Expander>
+
+                <!-- ⑦ 诊断：现场用不到，默认折叠 -->
+                <Expander Grid.Row="7" Header="⑦ 诊断与自检（现场无需展开）" Margin="0,0,0,10">
                     <StackPanel Margin="4,8,0,0">
                         <TextBlock x:Name="StyleReport" Style="{StaticResource Mono}" Margin="0,0,0,4" />
                         <TextBlock x:Name="BandReport" Style="{StaticResource Mono}" Margin="0,0,0,4" />

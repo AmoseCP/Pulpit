@@ -82,6 +82,8 @@ public partial class App : System.Windows.Application
             _overlay, composer, _config, databaseVersion, databaseError);
         _control.TargetScreenChanged += OnTargetScreenChanged;
         _control.TextModeChanged += OnTextModeChanged;
+        _control.AppearanceChanged += OnAppearanceChanged;
+        _control.AppearanceSaveRequested += OnAppearanceSaveRequested;
         _control.Closed += OnControlClosed;
         _control.Show();
 
@@ -245,6 +247,16 @@ public partial class App : System.Windows.Application
         _config = _config with { Text = new TextConfig { UseRawText = _control.UseRawText } };
         Persist($"正文来源 useRawText={_control.UseRawText}");
     }
+
+    /// <summary>P1-3：外观实时应用，**不落盘**。</summary>
+    private void OnAppearanceChanged(object? sender, AppConfig config)
+    {
+        _config = config;
+        _overlay?.ApplyConfig(config);
+    }
+
+    /// <summary>P1-3：操作员点了「保存为默认」才落盘。</summary>
+    private void OnAppearanceSaveRequested(object? sender, EventArgs e) => Persist("外观设置");
 
     private void Persist(string what)
     {
