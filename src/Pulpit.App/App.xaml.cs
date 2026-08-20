@@ -81,6 +81,7 @@ public partial class App : System.Windows.Application
         _control = new ControlWindow(
             _overlay, composer, _config, databaseVersion, databaseError);
         _control.TargetScreenChanged += OnTargetScreenChanged;
+        _control.TextModeChanged += OnTextModeChanged;
         _control.Closed += OnControlClosed;
         _control.Show();
 
@@ -230,15 +231,31 @@ public partial class App : System.Windows.Application
         }
 
         _config = _config with { TargetScreenDeviceName = _overlay.TargetScreenDeviceName };
+        Persist($"目标屏 {_config.TargetScreenDeviceName}");
+    }
 
+    /// <summary>P1-4：记住原文/清洗版的选择。</summary>
+    private void OnTextModeChanged(object? sender, EventArgs e)
+    {
+        if (_control is null)
+        {
+            return;
+        }
+
+        _config = _config with { Text = new TextConfig { UseRawText = _control.UseRawText } };
+        Persist($"正文来源 useRawText={_control.UseRawText}");
+    }
+
+    private void Persist(string what)
+    {
         if (_configStore.TrySave(_config, out string? error))
         {
-            AppLog.Info($"目标屏已记住：{_config.TargetScreenDeviceName}");
+            AppLog.Info($"已记住：{what}");
         }
         else
         {
             // 写不进去不是停机理由——只是下次启动记不住。
-            AppLog.Warn($"目标屏写入配置失败（下次启动会记不住）：{error}");
+            AppLog.Warn($"{what} 写入配置失败（下次启动会记不住）：{error}");
         }
     }
 

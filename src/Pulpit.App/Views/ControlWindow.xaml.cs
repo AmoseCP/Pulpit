@@ -43,6 +43,7 @@ public partial class ControlWindow : Window
     private FadeMeasurement _lastFade;
     private bool _hasFadeSample;
     private bool _useRawText;
+    private string? _lastSentInput;
 
     public ControlWindow(
         OverlayWindow overlay,
@@ -73,6 +74,8 @@ public partial class ControlWindow : Window
             DatabaseWarningText.Text = $"经文库不可用，只能投放自由文本。{databaseError}";
         }
 
+        RawTextToggle.IsChecked = _useRawText;
+
         AttachPreview();
         AttachImeTracking();
 
@@ -95,6 +98,12 @@ public partial class ControlWindow : Window
 
     /// <summary>操作员改了目标屏。<c>App</c> 据此把设备名写进配置（P0-12）。</summary>
     public event EventHandler? TargetScreenChanged;
+
+    /// <summary>操作员切换了原文/清洗版。<c>App</c> 据此写 <c>text.useRawText</c>（P1-4）。</summary>
+    public event EventHandler? TextModeChanged;
+
+    /// <summary>当前是否显示原文（<c>text_raw</c>）。</summary>
+    public bool UseRawText => _useRawText;
 
     /// <summary>热键子系统的状态文本，由 <c>App</c> 在注册完成后写入。</summary>
     public string HotkeyStatus { get; set; } = "热键：未启用";
@@ -214,8 +223,57 @@ public partial class ControlWindow : Window
 
         DisplayContent content = result.Content!;
 
+        _lastSentInput = input;
         _overlay.Show(content);
         AppLog.Info($"投放：{input}（{content.Kind}，{content.PageCount} 页）");
+        RefreshDiagnostics();
+    }
+
+    /// <summary>
+    /// P1-4：原文 ↔ 清洗版切换。
+    /// </summary>
+    /// <remarks>
+    /// 切换后**原地重投并保持当前页**。跳回第 1 页会让操作员在多页经文中途切换时
+    /// 丢失位置——现场重新按 F8 翻回去是可见的抖动。
+    /// </remarks>
+    private void OnToggleRawText(object sender, RoutedEventArgs e)
+    {
+        _useRawText = RawTextToggle.IsChecked == true;
+
+        AppLog.Info($"正文来源切换为 {(_useRawText ? "text_raw（原文）" : "text_display（清洗版）")}。");
+
+        RefreshMode();
+        RefreshStatusBar();
+
+        TextModeChanged?.Invoke(this, EventArgs.Empty);
+
+        ReprojectPreservingPage();
+    }
+
+    /// <summary>用当前设置重投上一次的输入，并把页码停在原处。</summary>
+    private void ReprojectPreservingPage()
+    {
+        if (_lastSentInput is null || !_overlay.IsContentVisible)
+        {
+            return;
+        }
+
+        int page = _overlay.CurrentContent?.Index ?? 0;
+
+        ComposeResult result = _composer.Compose(_lastSentInput, _useRawText);
+
+        if (!result.HasContent)
+        {
+            return;
+        }
+
+        DisplayContent content = result.Content!;
+
+        // 页数理论上不会因为换正文来源而变（分页按并节组，与文本内容无关），
+        // 但仍然夹一下：万一变了，宁可停在末页也不要越界。
+        content.Index = Math.Min(page, Math.Max(0, content.PageCount - 1));
+
+        _overlay.Show(content);
         RefreshDiagnostics();
     }
 

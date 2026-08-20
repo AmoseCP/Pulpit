@@ -112,6 +112,12 @@
                             <Button Content="清屏 (F12)" Click="OnClear" MinWidth="104" />
                             <Button Content="英文 (F10)" Click="OnSendEnglish" MinWidth="104" Margin="0" />
                         </StackPanel>
+                        <CheckBox x:Name="RawTextToggle" Click="OnToggleRawText"
+                                  Margin="0,0,0,10" VerticalAlignment="Center"
+                                  ToolTip="勾选后显示 text_raw：保留敬空、译注括号、雅歌说话人标注。默认显示已清洗的 text_display。">
+                            <TextBlock Text="显示原文（含敬空与译注）" />
+                        </CheckBox>
+
                         <StackPanel Orientation="Horizontal">
                             <TextBlock Text="样例：" VerticalAlignment="Center" Margin="0,0,8,0"
                                        Foreground="#FF666666" />
