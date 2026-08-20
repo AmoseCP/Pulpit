@@ -21,6 +21,7 @@ public partial class App : System.Windows.Application
     private AppConfig _config = new();
     private SingleInstanceGuard? _singleInstance;
     private OverlayWindow? _overlay;
+    private BadgeWindow? _badge;
     private ControlWindow? _control;
     private BibleRepository? _repository;
     private GlobalHotkeyService? _hotkeys;
@@ -82,6 +83,13 @@ public partial class App : System.Windows.Application
 
         // ShowActivated=False 已在 XAML 声明；Show() 不会夺取焦点。
         _overlay.Show();
+
+        // P2-4 副屏第二区域。独立窗口，与正文带子互不影响。
+        // 先 Show 再 ApplyConfig：ApplyConfig 会按配置决定淡入还是保持透明，
+        // 而它需要窗口已经有 HWND（定位走 SetWindowPos）。
+        _badge = new BadgeWindow(_config);
+        _badge.Show();
+        _badge.ApplyConfig(_config);
 
         _control = new ControlWindow(
             _overlay, composer, searchIndex, _config, databaseVersion, databaseError);
@@ -225,6 +233,7 @@ public partial class App : System.Windows.Application
 
         // 目标屏不在了会退回主屏而不是崩（ResolveTargetScreen 内部处理）。
         _overlay?.Reposition();
+        _badge?.Reposition();
         _control?.NotifyScreensChanged();
     }
 
@@ -238,6 +247,10 @@ public partial class App : System.Windows.Application
         }
 
         _config = _config with { TargetScreenDeviceName = _overlay.TargetScreenDeviceName };
+
+        // 角标跟着正文一起换屏——它们本来就该在同一块副屏上。
+        _badge?.ApplyConfig(_config);
+
         Persist($"目标屏 {_config.TargetScreenDeviceName}");
     }
 
@@ -258,6 +271,7 @@ public partial class App : System.Windows.Application
     {
         _config = config;
         _overlay?.ApplyConfig(config);
+        _badge?.ApplyConfig(config);
     }
 
     /// <summary>P1-3：操作员点了「保存为默认」才落盘。</summary>
@@ -298,9 +312,12 @@ public partial class App : System.Windows.Application
         // 热键先注销：留着不放会让下一次启动注册失败。
         _hotkeys?.Dispose();
 
-        // 只有此刻才允许叠加层真正关闭（L4）。
+        // 只有此刻才允许两个叠加窗口真正关闭（L4）。
         _overlay?.AllowCloseOnShutdown();
         _overlay?.Close();
+
+        _badge?.AllowCloseOnShutdown();
+        _badge?.Close();
 
         _repository?.Dispose();
         _singleInstance?.Dispose();

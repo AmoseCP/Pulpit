@@ -125,6 +125,44 @@ internal sealed class OverlayWindowStyler : IDisposable
     /// <summary>最近一次定位得到的带状区域（物理像素），供控制窗口显示。</summary>
     internal System.Drawing.Rectangle LastBand { get; private set; }
 
+    /// <summary>
+    /// P2-4：定位到目标屏的某个角（角标 / 聚会主题常驻）。
+    /// </summary>
+    /// <remarks>
+    /// 和 <see cref="PositionOnScreen"/> 一样走物理像素，理由相同（跨 DPI 不算错）。
+    /// 留白按**屏幕短边**算：按长边算的话竖屏与横屏的观感会差很远。
+    /// </remarks>
+    internal void PositionInCorner(
+        System.Windows.Forms.Screen screen,
+        string corner,
+        double widthPercent,
+        double heightPercent,
+        double marginPercent)
+    {
+        if (_hwnd == IntPtr.Zero || screen is null)
+        {
+            return;
+        }
+
+        System.Drawing.Rectangle b = screen.Bounds;   // 物理像素
+
+        int width = Math.Max(1, (int)Math.Round(b.Width * widthPercent));
+        int height = Math.Max(1, (int)Math.Round(b.Height * heightPercent));
+        int margin = (int)Math.Round(Math.Min(b.Width, b.Height) * marginPercent);
+
+        bool right = corner.EndsWith("Right", StringComparison.OrdinalIgnoreCase);
+        bool bottom = corner.StartsWith("bottom", StringComparison.OrdinalIgnoreCase);
+
+        int x = right ? b.Right - width - margin : b.Left + margin;
+        int y = bottom ? b.Bottom - height - margin : b.Top + margin;
+
+        NativeMethods.SetWindowPos(
+            _hwnd, NativeMethods.HWND_TOPMOST, x, y, width, height,
+            NativeMethods.SWP_NOACTIVATE);
+
+        LastBand = new System.Drawing.Rectangle(x, y, width, height);
+    }
+
     /// <summary>L6：对抗放映软件的 Z 序抢占。成本近零，必须保留。</summary>
     internal void ForceTopmost()
     {

@@ -624,6 +624,10 @@ public partial class ControlWindow : Window
 
             LoadFontList();
 
+            BadgeEnabled.IsChecked = _config.Badge.Enabled;
+            BadgeTextBox.Text = _config.Badge.Text;
+            SelectBadgeCorner(_config.Badge.Corner);
+
             RefreshAppearanceLabels();
         }
         finally
@@ -657,6 +661,29 @@ public partial class ControlWindow : Window
 
         FontList.SelectedItem = _config.Typography.FontFamily;
     }
+
+    private void SelectBadgeCorner(string corner)
+    {
+        foreach (object item in BadgeCorner.Items)
+        {
+            if (item is ComboBoxItem { Tag: string tag }
+                && string.Equals(tag, corner, StringComparison.OrdinalIgnoreCase))
+            {
+                BadgeCorner.SelectedItem = item;
+                return;
+            }
+        }
+
+        BadgeCorner.SelectedIndex = 0;
+    }
+
+    private string CurrentBadgeCorner() =>
+        BadgeCorner.SelectedItem is ComboBoxItem { Tag: string tag } ? tag : "topRight";
+
+    /// <summary>与字体下拉同理：给它一个精确签名的处理器，不靠委托逆变。</summary>
+    private void OnBadgeCornerChanged(object sender, SelectionChangedEventArgs e) => ApplyAppearance();
+
+    private void OnBadgeTextChanged(object sender, TextChangedEventArgs e) => ApplyAppearance();
 
     private void RefreshAppearanceLabels()
     {
@@ -716,6 +743,12 @@ public partial class ControlWindow : Window
             {
                 FadeMs = (int)Math.Round(FadeSlider.Value),
             },
+            Badge = _config.Badge with
+            {
+                Enabled = BadgeEnabled.IsChecked == true,
+                Text = BadgeTextBox.Text,
+                Corner = CurrentBadgeCorner(),
+            },
         };
 
         // Sanitize 是免费的保险：滑块范围本就在合法区间内，但万一以后改了范围，
@@ -749,6 +782,9 @@ public partial class ControlWindow : Window
             Band = defaults.Band,
             Typography = defaults.Typography,
             Animation = defaults.Animation,
+
+            // 角标只重置几何与显隐，**保留文字**——那是操作员敲进去的内容，不是外观参数。
+            Badge = defaults.Badge with { Text = _config.Badge.Text },
         };
 
         LoadAppearanceControls();

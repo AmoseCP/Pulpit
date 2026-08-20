@@ -1,4 +1,6 @@
+using System;
 using System.Collections.Generic;
+using System.Linq;
 using Pulpit.Core.Config;
 using Xunit;
 
@@ -208,4 +210,98 @@ public sealed class ConfigTests
         Assert.Equal(5, HotkeyWhitelist.All.Count);
         Assert.Equal("F7 F8 F9 F10 F12", HotkeyWhitelist.AllowedList);
     }
+
+    // ================= 副屏角标（P2-4）=================
+
+    [Fact]
+    public void BadgeDefaultsAreOffAndTopRight()
+    {
+        BadgeConfig badge = new AppConfig().Badge;
+
+        Assert.False(badge.Enabled);          // 不是每场聚会都要挂角标
+        Assert.Equal(string.Empty, badge.Text);
+        Assert.Equal("topRight", badge.Corner);
+        Assert.Equal(0.28, badge.WidthPercent);
+        Assert.Equal(0.07, badge.HeightPercent);
+        Assert.Equal(0.02, badge.MarginPercent);
+        Assert.Equal(0.55, badge.BackgroundOpacity);
+    }
+
+    [Theory]
+    [InlineData("topRight")]
+    [InlineData("topLeft")]
+    [InlineData("bottomRight")]
+    [InlineData("bottomLeft")]
+    [InlineData("TOPLEFT")]      // 大小写不敏感
+    [InlineData("bottomright")]
+    public void KnownCornersAreAcceptedAndCanonicalized(string corner)
+    {
+        var config = new AppConfig { Badge = new BadgeConfig { Corner = corner } };
+
+        AppConfig sanitized = config.Sanitize(out IReadOnlyList<string> corrections);
+
+        Assert.Empty(corrections);
+        Assert.Contains(sanitized.Badge.Corner, BadgeConfig.Corners);
+
+        // 规范化成 Corners 里的那个写法，而不是原样保留大小写。
+        Assert.Equal(
+            BadgeConfig.Corners.Single(c => string.Equals(c, corner, StringComparison.OrdinalIgnoreCase)),
+            sanitized.Badge.Corner);
+    }
+
+    [Theory]
+    [InlineData("middle")]
+    [InlineData("center")]
+    [InlineData("")]
+    [InlineData("top")]
+    public void UnknownCornerFallsBackToTopRight(string corner)
+    {
+        var config = new AppConfig { Badge = new BadgeConfig { Corner = corner } };
+
+        AppConfig sanitized = config.Sanitize(out IReadOnlyList<string> corrections);
+
+        Assert.Equal("topRight", sanitized.Badge.Corner);
+        Assert.Single(corrections);
+    }
+
+    [Fact]
+    public void OutOfRangeBadgeGeometryIsClamped()
+    {
+        var config = new AppConfig
+        {
+            Badge = new BadgeConfig
+            {
+                WidthPercent = 3,
+                HeightPercent = 0.9,
+                MarginPercent = -1,
+                BackgroundOpacity = 5,
+            },
+        };
+
+        AppConfig sanitized = config.Sanitize(out IReadOnlyList<string> corrections);
+
+        Assert.Equal(1.00, sanitized.Badge.WidthPercent);
+        Assert.Equal(0.30, sanitized.Badge.HeightPercent);
+        Assert.Equal(0.0, sanitized.Badge.MarginPercent);
+        Assert.Equal(1.0, sanitized.Badge.BackgroundOpacity);
+        Assert.Equal(4, corrections.Count);
+    }
+
+    [Fact]
+    public void BadgeTextIsNotSanitized()
+    {
+        // 角标文字是操作员的内容，不该被 Sanitize 动。
+        const string text = "主日崇拜 2026-08-23";
+
+        var config = new AppConfig { Badge = new BadgeConfig { Text = text, Enabled = true } };
+
+        AppConfig sanitized = config.Sanitize(out IReadOnlyList<string> corrections);
+
+        Assert.Equal(text, sanitized.Badge.Text);
+        Assert.True(sanitized.Badge.Enabled);
+        Assert.Empty(corrections);
+    }
+
+    [Fact]
+    public void CornersListHasExactlyFourEntries() => Assert.Equal(4, BadgeConfig.Corners.Count);
 }

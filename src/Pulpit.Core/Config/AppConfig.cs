@@ -32,6 +32,8 @@ public sealed record AppConfig
 
     public LyricsConfig Lyrics { get; init; } = new();
 
+    public BadgeConfig Badge { get; init; } = new();
+
     /// <summary>
     /// 把越界或非法的字段夹回合法范围，返回被修正项的说明（供调用方写日志）。
     /// </summary>
@@ -48,6 +50,7 @@ public sealed record AppConfig
         AnimationConfig animation = Animation.Sanitize(notes);
         HotkeyConfig hotkeys = Hotkeys.Sanitize(notes);
         LyricsConfig lyrics = Lyrics.Sanitize(notes);
+        BadgeConfig badge = Badge.Sanitize(notes);
 
         corrections = notes;
 
@@ -58,6 +61,7 @@ public sealed record AppConfig
             Animation = animation,
             Hotkeys = hotkeys,
             Lyrics = lyrics,
+            Badge = badge,
         };
     }
 }
@@ -207,6 +211,93 @@ public sealed record AnimationConfig
         }
 
         return this;
+    }
+}
+
+/// <summary>
+/// 副屏第二区域（P2-4）：角标 / 聚会主题常驻。
+/// </summary>
+/// <remarks>
+/// 与正文带状区域**互不影响**：它是另一个窗口，有自己的位置、自己的显隐，
+/// 正文淡入淡出不会碰它。默认放右上角——底部三分之一归正文（L3），别去挤它。
+/// </remarks>
+public sealed record BadgeConfig
+{
+    /// <summary>是否显示。默认关闭：不是每场聚会都要挂角标。</summary>
+    public bool Enabled { get; init; }
+
+    /// <summary>角标文字，如「主日崇拜」。</summary>
+    public string Text { get; init; } = string.Empty;
+
+    /// <summary><c>topRight</c> / <c>topLeft</c> / <c>bottomRight</c> / <c>bottomLeft</c>。</summary>
+    public string Corner { get; init; } = "topRight";
+
+    /// <summary>宽度占屏宽的比例。</summary>
+    public double WidthPercent { get; init; } = 0.28;
+
+    /// <summary>高度占屏高的比例。</summary>
+    public double HeightPercent { get; init; } = 0.07;
+
+    /// <summary>离屏幕边缘的留白，占屏幕短边的比例。</summary>
+    public double MarginPercent { get; init; } = 0.02;
+
+    /// <summary>底色不透明度。默认比正文带子淡一些——它是配角。</summary>
+    public double BackgroundOpacity { get; init; } = 0.55;
+
+    /// <summary>合法的四个角。</summary>
+    public static IReadOnlyList<string> Corners { get; } =
+        ["topRight", "topLeft", "bottomRight", "bottomLeft"];
+
+    internal BadgeConfig Sanitize(List<string> notes)
+    {
+        string corner = Corner;
+        bool known = false;
+
+        foreach (string candidate in Corners)
+        {
+            if (string.Equals(candidate, corner, StringComparison.OrdinalIgnoreCase))
+            {
+                corner = candidate;
+                known = true;
+                break;
+            }
+        }
+
+        if (!known)
+        {
+            notes.Add($"badge.corner「{Corner}」无效（只许 {string.Join(" ", Corners)}），改用 topRight");
+            corner = "topRight";
+        }
+
+        return this with
+        {
+            Corner = corner,
+            WidthPercent = Clamp(WidthPercent, 0.05, 1.00, 0.28, nameof(WidthPercent), notes),
+            HeightPercent = Clamp(HeightPercent, 0.02, 0.30, 0.07, nameof(HeightPercent), notes),
+            MarginPercent = Clamp(MarginPercent, 0.0, 0.20, 0.02, nameof(MarginPercent), notes),
+            BackgroundOpacity = Clamp(BackgroundOpacity, 0.0, 1.0, 0.55, nameof(BackgroundOpacity), notes),
+        };
+    }
+
+    private static double Clamp(
+        double value, double min, double max, double fallback, string name, List<string> notes)
+    {
+        string field = "badge." + char.ToLowerInvariant(name[0]) + name[1..];
+
+        if (double.IsNaN(value) || double.IsInfinity(value))
+        {
+            notes.Add($"{field} 不是有效数字，改用 {fallback}");
+            return fallback;
+        }
+
+        if (value < min || value > max)
+        {
+            double clamped = value < min ? min : max;
+            notes.Add($"{field}={value} 超出 [{min}, {max}]，夹到 {clamped}");
+            return clamped;
+        }
+
+        return value;
     }
 }
 
