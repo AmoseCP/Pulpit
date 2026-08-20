@@ -628,11 +628,14 @@ public partial class ControlWindow : Window
             HeightSlider.Value = _config.Band.HeightPercent;
             FadeSlider.Value = _config.Animation.FadeMs;
 
-            bool bottom = !string.Equals(
+            bool top = string.Equals(
                 _config.Band.VerticalAnchor, "top", StringComparison.OrdinalIgnoreCase);
+            bool center = string.Equals(
+                _config.Band.VerticalAnchor, "center", StringComparison.OrdinalIgnoreCase);
 
-            AnchorBottom.IsChecked = bottom;
-            AnchorTop.IsChecked = !bottom;
+            AnchorTop.IsChecked = top;
+            AnchorCenter.IsChecked = center;
+            AnchorBottom.IsChecked = !top && !center;
 
             LoadFontList();
 
@@ -744,7 +747,9 @@ public partial class ControlWindow : Window
             {
                 HeightPercent = HeightSlider.Value,
                 BackgroundOpacity = OpacitySlider.Value,
-                VerticalAnchor = AnchorTop.IsChecked == true ? "top" : "bottom",
+                VerticalAnchor = AnchorTop.IsChecked == true ? "top"
+                    : AnchorCenter.IsChecked == true ? "center"
+                    : "bottom",
             },
             Typography = _config.Typography with
             {

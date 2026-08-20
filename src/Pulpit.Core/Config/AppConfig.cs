@@ -91,7 +91,7 @@ public sealed record BandConfig
     /// <summary>带高占屏高的比例。L3：下三分之一，不全屏。</summary>
     public double HeightPercent { get; init; } = 0.30;
 
-    /// <summary><c>bottom</c> 或 <c>top</c>。</summary>
+    /// <summary><c>bottom</c> / <c>top</c> / <c>center</c>。</summary>
     public string VerticalAnchor { get; init; } = "bottom";
 
     /// <summary>黑底不透明度。0 = 全透明（只剩白字），1 = 纯黑。</summary>
@@ -108,9 +108,10 @@ public sealed record BandConfig
 
         string anchor = VerticalAnchor;
         if (!string.Equals(anchor, "bottom", StringComparison.OrdinalIgnoreCase)
-            && !string.Equals(anchor, "top", StringComparison.OrdinalIgnoreCase))
+            && !string.Equals(anchor, "top", StringComparison.OrdinalIgnoreCase)
+            && !string.Equals(anchor, "center", StringComparison.OrdinalIgnoreCase))
         {
-            notes.Add($"band.verticalAnchor「{VerticalAnchor}」无效，改用 bottom");
+            notes.Add($"band.verticalAnchor「{VerticalAnchor}」无效（只许 bottom / top / center），改用 bottom");
             anchor = "bottom";
         }
 

@@ -314,6 +314,8 @@
                                     Orientation="Horizontal" Margin="0,0,0,6">
                             <RadioButton x:Name="AnchorBottom" Content="贴底（默认）" GroupName="Anchor"
                                          Click="OnAppearanceToggled" Margin="0,0,16,0" />
+                            <RadioButton x:Name="AnchorCenter" Content="居中" GroupName="Anchor"
+                                         Click="OnAppearanceToggled" Margin="0,0,16,0" />
                             <RadioButton x:Name="AnchorTop" Content="贴顶" GroupName="Anchor"
                                          Click="OnAppearanceToggled" />
                         </StackPanel>

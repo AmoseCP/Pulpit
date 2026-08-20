@@ -56,7 +56,7 @@ public sealed class ConfigTests
                 HeightPercent = 5.0,          // 远超 1.0
                 BackgroundOpacity = -1,
                 PaddingPercent = 9,
-                VerticalAnchor = "middle",    // 只允许 bottom / top
+                VerticalAnchor = "middle",    // 只允许 bottom / top / center
             },
         };
 
@@ -67,6 +67,18 @@ public sealed class ConfigTests
         Assert.Equal(0.30, sanitized.Band.PaddingPercent);
         Assert.Equal("bottom", sanitized.Band.VerticalAnchor);
         Assert.Equal(4, corrections.Count);
+    }
+
+    /// <summary>P1-3 扩展：垂直位置第三档「居中」是合法值，大小写不敏感、不产生修正。</summary>
+    [Fact]
+    public void CenterAnchorIsLegal()
+    {
+        var config = new AppConfig { Band = new BandConfig { VerticalAnchor = "Center" } };
+
+        AppConfig sanitized = config.Sanitize(out IReadOnlyList<string> corrections);
+
+        Assert.Equal("center", sanitized.Band.VerticalAnchor);
+        Assert.Empty(corrections);
     }
 
     [Fact]

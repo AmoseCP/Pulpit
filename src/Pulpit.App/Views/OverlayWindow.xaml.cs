@@ -517,7 +517,7 @@ public partial class OverlayWindow : Window, IOverlayController
         ArgumentNullException.ThrowIfNull(screen);
 
         _targetScreenDeviceName = screen.DeviceName;
-        _styler.PositionOnScreen(screen, _theme.HeightPercent, _theme.AnchorBottom);
+        _styler.PositionOnScreen(screen, _theme.HeightPercent, _theme.VerticalAnchor);
     }
 
     /// <summary>P0-13：显示器变更后重新定位。副屏拔出时会退回主屏而不是崩。</summary>
@@ -530,7 +530,7 @@ public partial class OverlayWindow : Window, IOverlayController
     public void Reposition()
     {
         System.Windows.Forms.Screen screen = ResolveTargetScreen();
-        _styler.PositionOnScreen(screen, _theme.HeightPercent, _theme.AnchorBottom);
+        _styler.PositionOnScreen(screen, _theme.HeightPercent, _theme.VerticalAnchor);
     }
 }
 

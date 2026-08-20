@@ -30,7 +30,7 @@ internal sealed class OverlayTheme
         double labelScale,
         double paddingPercent,
         double heightPercent,
-        bool anchorBottom,
+        string verticalAnchor,
         int fadeMs)
     {
         FontFamily = fontFamily;
@@ -43,7 +43,7 @@ internal sealed class OverlayTheme
         LabelScale = labelScale;
         PaddingPercent = paddingPercent;
         HeightPercent = heightPercent;
-        AnchorBottom = anchorBottom;
+        VerticalAnchor = verticalAnchor;
         FadeMs = fadeMs;
     }
 
@@ -68,7 +68,8 @@ internal sealed class OverlayTheme
 
     internal double HeightPercent { get; }
 
-    internal bool AnchorBottom { get; }
+    /// <summary><c>bottom</c> / <c>top</c> / <c>center</c>，已经过 Sanitize。</summary>
+    internal string VerticalAnchor { get; }
 
     /// <summary>0 表示无动画直切（见 <see cref="AnimationConfig.FadeMs"/>）。</summary>
     internal int FadeMs { get; }
@@ -107,7 +108,7 @@ internal sealed class OverlayTheme
             labelScale: t.LabelScale,
             paddingPercent: b.PaddingPercent,
             heightPercent: b.HeightPercent,
-            anchorBottom: !string.Equals(b.VerticalAnchor, "top", StringComparison.OrdinalIgnoreCase),
+            verticalAnchor: b.VerticalAnchor.ToLowerInvariant(),
             fadeMs: config.Animation.FadeMs);
     }
 
