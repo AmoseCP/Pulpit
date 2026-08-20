@@ -39,6 +39,14 @@
 中文输入法用 Enter 确认候选词。若 Enter 触发投放，操作员打「神爱世人」时会有半截内容上屏。
 送出一律走 F9/F10 全局热键。输入框内的 Enter 不做任何事。
 
+**破坏这条最容易的方式不是写键盘事件，是给按钮加一个属性。** `IsDefault="True"`
+会让 Enter 自动触发那个按钮——等于把送出键绑回 Enter。同理还有 `KeyBinding`、
+`PreviewKeyDown` 里手写的 `Key.Enter` 分支。
+
+所以 `ControlWindow` 里**刻意一行都不写**：只有 `AcceptsReturn="False"`，
+让 TextBox 自己吞掉 Enter。改控制窗口前先 grep 一遍
+`IsDefault|IsCancel|KeyBinding|PreviewKeyDown|Key.Enter`，应该是零命中。
+
 ### 5. 并节必须处理
 
 和合本有 81 组经文把多节合并（民 1:20-21、诗 8:6-8 等），原始库中被合并的节号是空串。
@@ -93,8 +101,17 @@ M0 是**硬性 go/no-go 门**：必须先交付透明叠加层尖刺，由人工
 
 ---
 
-## 当前状态
+## 当前状态（2026-08-20）
 
 - ✅ 数据库已就绪：`bible_cuv.db`（和合本简体，31103 节，478 条书卷别名，81 组并节已解析）
-- ⬜ M0 尖刺未开始
+- ✅ M0–M6 代码全部交付，逐个里程碑提交
+- 🔴 **`Pulpit.App` 的 WPF 代码一行都没编译过**（开发在 macOS 上进行，WPF 不支持在 macOS 编译）。
+  下一步：Windows 上 `dotnet build`
+- 🔴 **M0 九项真机验收已搁置**（操作员决定）。门未撤销，清单在 `docs/M0-验收清单.md`。
+  悬空风险是第 7 项淡入帧率——逃生口已实现：`animation.fadeMs=0` 即无动画直切
+- 🟡 `Pulpit.Core` 有 75 个测试方法 / 86 条数据行，是纯 `net8.0`，**在 macOS 上就能 `dotnet test`**，
+  但尚未跑过。M1 的语义已用 Python 原型在真库上验证（§6 全 34 条绿）
 - ⏸ 英文译本 v1.1 补；NIV 1984 授权待 Crossmap 确认，可能改用 ESV/KJV/WEB
+
+改代码前先看 `DEVELOPMENT_PLAN.md` §11「计划书修订记录」——2026-08-20 那轮校正了
+5 处事实错误与实现偏差（M2 不用 Viewbox、M2 验收样本换成申30:9-10 等）。

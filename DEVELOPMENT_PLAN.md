@@ -82,7 +82,11 @@
 
 ### M0 — 环境验证与技术尖刺 ⚠️ 硬性 go/no-go 门
 
-**必须在写任何业务代码之前完成，且必须在真实直播机上验证。**
+> **状态（2026-08-20 修订）：尖刺已交付，9 项真机验收经操作员决定暂时搁置，开发继续往下走。**
+> 门没有撤销，只是延后——随时可以补做，清单见 `docs/M0-验收清单.md`。
+> 搁置带来的唯一悬空风险是验收第 7 项（淡入帧率），缓解见 §8 风险登记。
+
+原定要求：**必须在写任何业务代码之前完成，且必须在真实直播机上验证。**
 
 产出：一个最小 WPF 程序，副屏下三分之一显示一条固定文字「测试」，白字半透明黑底，2 秒心跳置顶。
 
@@ -118,15 +122,32 @@
 
 产出：`OverlayWindow` 完整实现，由测试用的按钮驱动。
 
-- 带状容器 + `Viewbox`（`Stretch="Uniform"`）自适应字号
+- 带状容器 + **二分搜索最大可容字号**自适应排版（**2026-08-20 修订：原定 `Viewbox`，实测不可用**）
 - 出处标签固定在正文下方右对齐，字号为正文的 40%
 - 页码指示器（多页时才显示，如 `2/3`）
 - 淡入淡出 250ms（`DoubleAnimation` on `Opacity`）
 - `Clear()` 只做淡出，不 Hide、不 Close
 
+> **为什么不是 `Viewbox`（2026-08-20 修订）**
+>
+> `Viewbox` 给子元素无限宽度，`TextWrapping` 永不生效；改成给 `TextBlock` 固定宽度再让
+> `Viewbox` 等比缩，则换行点是在 `MaxFontSize` 下算出来的，缩小后行数偏多、字号偏小。
+> 实测最坏情况（申 30:9-10，106 字）在 1920×324 带子里：`Viewbox` 方案约 **35px**，
+> 按最优换行可到约 **46px**。30% 的字号差，副屏后排能不能看清就在这里。
+>
+> 改为：二分搜索能把正文完整放进正文区的最大字号，上限 `MaxFontSize`、下限 `MinFontSize`，
+> 用 `FormattedText` 离线测量（不进视觉树，无布局重入风险），行高系数测量与呈现共用同一常量。
+>
+> 连带约束：**页脚行高必须固定预留**（`MaxFontSize × LabelScale × 1.6`），不能用 `Auto`。
+> 出处标签字号 = 正文字号 × 40%，而正文字号又由「总高 − 页脚高」算出来，`Auto` 会形成循环。
+
 验收标准：
 
-- 最长节（太 23:13，119 字）单页显示完整，不溢出、不截断
+- **最长节（申 30:9-10，`text_display` 106 字，且本身是并节组）单页显示完整，不溢出、不截断**
+  （**2026-08-20 修订**：原写「太 23:13，119 字」。119 字是 `text_raw` 的长度——那一节含
+  `（有古卷加：14…）`，清洗后的 `text_display` 只有 60 字，拿它验排版验不出问题。
+  全库 `text_display` 最长的是申 30:9 / 30:10 / 耶 33:11，均 106 字；其中申 30:9-10 是并节组，
+  最长文本 + 强制单页，正好是最坏情况。）
 - 最短内容（2 字）字号被 `MaxFontSize` 限制，不会撑满整条带
 - 反复 Show/Clear 200 次，窗口句柄不变，Z 序不丢
 
@@ -149,7 +170,11 @@
 
 产出：热键子系统 + 分页逻辑。
 
-- `RegisterHotKey` 挂在一个 message-only 窗口上（`HwndSource`）
+- `RegisterHotKey` 挂在本程序自建的隐藏窗口上（`HwndSource`，0×0，带 `WS_EX_TOOLWINDOW`）
+  （**2026-08-20 修订**：原写「message-only 窗口」。改用普通隐藏窗口是为了走
+  `HwndSource` 那个久经使用的七参构造，避开 `HwndSourceParameters.ParentWindow=HWND_MESSAGE`
+  与 `WindowStyle` 的组合细节。效果一致：不参与绘制、不进 Alt+Tab、生命周期自持。
+  关键点不变——**不能挂在控制窗口上**，控制窗口一旦关闭或重建，热键就跟着失效。）
 - 注册失败（键位被占）时在状态栏明确告警，列出失败的键
 - 分页：范围查询按 `merge_head` 去重，一组一页
 
@@ -176,7 +201,10 @@
 ### M6 — 打包与实战彩排
 
 - 单文件发布（`PublishSingleFile`，self-contained，win-x64）
-- DB 随包，首次运行复制到 `%LOCALAPPDATA%\Pulpit\`
+- DB 随包（**嵌入为程序集资源**，`LogicalName=Pulpit.App.Assets.bible_cuv.db`），
+  首次运行解出到 `%LOCALAPPDATA%\Pulpit\`
+  （**2026-08-20 补充**：必须嵌入而不能放在 exe 旁边——单文件发布时 exe 旁边就没有别的文件了，
+  而 SQLite 需要真实文件路径、不能从内存流打开。是否重新解出按**文件长度**比对。）
 - 快速上手卡（一页 A4，给志愿者）
 
 验收标准：
@@ -192,36 +220,62 @@
 ```
 Pulpit/
 ├─ Pulpit.sln
-├─ CLAUDE.md
+├─ Directory.Build.props           # LangVersion / Nullable / 关闭隐式 using
+├─ publish.cmd                     # 单文件发布（先跑测试再打包）
+├─ CLAUDE.md · DEVELOPMENT_PLAN.md · SCHEMA.md · README.md
+├─ bible_cuv.db                    # 唯一一份；App 以嵌入资源方式引用它
+├─ docs/
+│  ├─ M0-验收清单.md
+│  └─ 快速上手卡.md                 # 一页 A4，给志愿者
 ├─ src/
-│  ├─ Pulpit.Core/                 # 无 UI 依赖，可单测
+│  ├─ Pulpit.Core/                 # 纯 net8.0，无 UI 依赖，可单测
 │  │  ├─ Data/
+│  │  │  ├─ Models.cs              # VerseRef / VerseText
+│  │  │  ├─ IBibleRepository.cs
 │  │  │  ├─ BibleRepository.cs
-│  │  │  └─ Models.cs              # VerseRef / VerseText / Page
+│  │  │  └─ BibleDatabaseException.cs
 │  │  ├─ Parsing/
-│  │  │  ├─ ReferenceParser.cs
-│  │  │  └─ TextNormalizer.cs
+│  │  │  ├─ TextNormalizer.cs
+│  │  │  ├─ IReferenceParser.cs
+│  │  │  └─ ReferenceParser.cs
 │  │  ├─ Content/
-│  │  │  ├─ DisplayContent.cs
+│  │  │  ├─ DisplayContent.cs      # ContentKind / Page / DisplayContent
 │  │  │  └─ ContentBuilder.cs      # VerseText[] -> Page[]
-│  │  └─ Config/AppConfig.cs
-│  ├─ Pulpit.App/                  # WPF
-│  │  ├─ App.xaml(.cs)
+│  │  └─ Config/
+│  │     ├─ AppConfig.cs           # Band / Typography / Animation / Text
+│  │     ├─ HotkeyConfig.cs        # + HotkeyWhitelist（L7 的机器化）
+│  │     └─ ConfigStore.cs         # config.json 读写，永不抛异常
+│  ├─ Pulpit.App/                  # WPF，net8.0-windows
+│  │  ├─ App.xaml(.cs)             # 组装 + 全局异常 + 热键分派 + 显示器变更
 │  │  ├─ app.manifest              # PerMonitorV2
+│  │  ├─ SingleInstanceGuard.cs    # L15
+│  │  ├─ Diagnostics/AppLog.cs     # 写 %LOCALAPPDATA%\Pulpit\logs\
+│  │  ├─ Data/DatabaseProvisioner.cs   # 嵌入资源 -> %LOCALAPPDATA%
 │  │  ├─ Views/
 │  │  │  ├─ ControlWindow.xaml(.cs)
-│  │  │  └─ OverlayWindow.xaml(.cs)
-│  │  ├─ ViewModels/
-│  │  ├─ Interop/
-│  │  │  ├─ NativeMethods.cs       # P/Invoke 集中于此
-│  │  │  ├─ OverlayWindowStyler.cs # 扩展样式 + 心跳
-│  │  │  └─ GlobalHotkey.cs
-│  │  └─ Assets/bible_cuv.db
+│  │  │  ├─ OverlayWindow.xaml(.cs)
+│  │  │  ├─ IOverlayController.cs  # 需要 Screen，故留在 App 层
+│  │  │  └─ OverlayTheme.cs        # AppConfig -> WPF 类型
+│  │  └─ Interop/
+│  │     ├─ NativeMethods.cs       # P/Invoke 集中于此
+│  │     ├─ OverlayWindowStyler.cs # 扩展样式 + 心跳 + 物理像素定位
+│  │     └─ GlobalHotkey.cs
 └─ tests/
-   └─ Pulpit.Core.Tests/
+   └─ Pulpit.Core.Tests/           # xUnit，跑在真库上
 ```
 
 **约束**：所有 P/Invoke 声明必须集中在 `NativeMethods.cs`，其他文件不得直接写 `DllImport`。
+
+**与原计划的差异（2026-08-20 修订）**：
+
+- **没有 `ViewModels/`**。两个窗口都用 code-behind。CLAUDE.md 规定未经确认不得添加 MVVM 框架，
+  而手写 `INotifyPropertyChanged` 样板在这个体量上只是纯负担——控制窗口的状态刷新是
+  一个 1 秒轮询加几个事件回调，不值得为它引入一层。
+- 新增 `Diagnostics/`、`Data/`（App 侧）、`SingleInstanceGuard.cs`、`Views/OverlayTheme.cs`、
+  `Views/IOverlayController.cs` —— 分别对应全局异常日志、经文库就位、L15、配置到 WPF 类型的映射、
+  以及 §5 那个需要 `Screen` 因而必须留在 App 层的接口。
+- `Assets/bible_cuv.db` **不作为文件存在**。仓库根只放一份 `bible_cuv.db`，csproj 用
+  `<EmbeddedResource>` 嵌进程序集，运行时解出到 `%LOCALAPPDATA%\Pulpit\`（见 §3 M6）。
 
 ---
 
@@ -287,14 +341,59 @@ public interface IOverlayController
 ```
 
 **`Lookup` 实现要点**：范围查询后按 `merge_head` 去重，否则 `民1:20-21` 会返回两条相同文本。
+（实现落点：去重发生在 SQL 里的 `GROUP BY v.merge_head`，不在 C# 侧再去一遍。）
 
 **`TryParse` 的三态语义很重要**：解析失败但"看起来不像引用"时必须静默走自由文本，不能报错——否则操作员想投「欢迎新朋友」会被拦下。
+
+---
+
+### 5.1 三态语义的一个已知缺口（2026-08-20 新增）
+
+`abc3:16` → 报「未知书卷「abc」」是 §6 明确要求的。但 **`晚上7:30` 的结构与它完全相同**
+（书卷片段 + 章号 + 冒号 + 节号，且整串匹配完），因此也会得到「未知书卷「晚上」」，
+操作员想把这行字当自由文本投出去就会被拦下——与 P0-4「输入不匹配引用格式时原样上屏」相抵。
+
+`今晚 7:30 祷告会` **不受影响**（尾部有非数字，整串匹配不上，静默走自由文本），§6 那条用例是绿的。
+受影响的只有「中文常用词 + 数字:数字」且后面不带任何非数字字符的输入。
+
+**当前取舍：按本节字面语义实现，即报错。** 依据是本项目自己的价值排序——§8 风险登记里
+「志愿者输错书卷 → 报错只在主屏，副屏保持原状」，报错是安全的一侧；而错误文本上副屏才是事故。
+代价是操作员遇到这类输入需要改写（加个字、或用 `晚上 7:30 祷告会`）。
+
+**若要改成静默走自由文本**，改动点只有一处：`ReferenceParser.TryParse` 中
+「书卷片段解析不出书卷」那个分支。这是一个待定的产品决定，不是缺陷。
+
+---
+
+### 5.2 契约的实际实现差异（2026-08-20 修订）
+
+以下是实现时对本节签名做的调整，都是**加强而非削弱**：
+
+| 契约 | 实际 | 原因 |
+|---|---|---|
+| `bool TryParse(string input, out VerseRef reference, out string? error)` | `TryParse(string? input, [MaybeNullWhen(false)] out VerseRef reference, out string? error)` | 空输入是合法的自由文本路径；`MaybeNullWhen` 让「失败时 reference 为 null」这条契约被编译器检查 |
+| `DisplayContent` 只有 `Kind / Pages / Index / Source` | 另加 `PageCount` `HasMultiplePages` `IsEmpty` `Current` `PageIndicator` `TryNext()` `TryPrevious()` | 「末页再按 F8 无动作、不循环」（M4 验收）是可单测的纯逻辑，放在 Core 才测得到；放在 `IOverlayController` 实现里就只能靠人工验 |
+| `IOverlayController` 未指定所属项目 | 放在 **`Pulpit.App`** | 它的 `MoveToScreen` 需要 `System.Windows.Forms.Screen`，而 CLAUDE.md 规定 `Screen` 仅在 App 层使用 |
+| `IBibleRepository` 四个成员 | 未改动；`BibleRepository` 另加 `SchemaVersion` / `DatabasePath` 两个具体类属性 | 状态栏要显示 DB 版本，但没必要把它塞进接口 |
+| — | 新增 `HotkeyWhitelist`（`IsAllowed` / `Canonicalize` / `All` / `AllowedList`） | L7 的机器化。配置文件不是可信输入，白名单必须在 Core 里且可单测 |
 
 ---
 
 ## 6. 测试用例（M1 验收清单）
 
 代理必须把下列全部写成单元测试并通过。这些是已在数据库上实测过的真实结果。
+
+> **核实结论（2026-08-20）：本节全部 34 条已在 `bible_cuv.db` 上逐条重跑，无一条有误，未作改动。**
+> 同批核实的其他事实也都正确：31103 节 / 478 条别名 / 1189 行 `chapter_info` / 66 书卷；
+> 并节 **81 组**、涉及 163 节、被合并掉 **82** 个节号。
+>
+> 顺带查明的两个「最坏情况」，已用于 M2/M4 的验收与样例按钮：
+>
+> | 最坏情况 | 值 | 用途 |
+> |---|---|---|
+> | `text_display` 最长 | **申 30:9-10 / 耶 33:11，106 字**（申 30:9-10 还是并节组 → 最长文本 + 强制单页） | M2 排版验收 |
+> | `text_raw` 最长 | 太 23:13 / 23:14，119 字（清洗后仅 60 字） | 仅供参考，**不用于排版验收** |
+> | 单章最多节 | **诗篇 119，176 节** | 范围分页的上界（`诗119:1-176` → 176 页） |
 
 ### 解析成功
 
@@ -365,6 +464,7 @@ public interface IOverlayController
     "fontFamily": "Microsoft YaHei UI",
     "fontWeight": "SemiBold",
     "maxFontSize": 96,
+    "minFontSize": 24,
     "labelScale": 0.40,
     "foreground": "#FFFFFFFF"
   },
@@ -380,18 +480,36 @@ public interface IOverlayController
 
 热键在 v1 从配置读取但**不提供 UI 修改**（P1-3 再做）。配置缺失或字段非法时用内置默认值，并写日志，不弹窗。
 
+**2026-08-20 修订/补充**：
+
+- 新增 `typography.minFontSize`（默认 24）。二分字号需要一个下限——低于它即使溢出也不再缩，
+  因为缩到看不见等于没投。连带行为：真放不下时按下限渲染并**在日志留痕**，尾部被裁切。
+- **`animation.fadeMs: 0` 表示无动画直切**，不是「立即完成的动画」。这是 M0 验收第 7 项的
+  逃生口：`AllowsTransparency=true` 关闭了叠加层窗口的硬件加速，若软件渲染下淡入帧率过低，
+  把这里设成 0 即可退化为直切，**不需要改任何代码**。
+- `hotkeys.*` 的取值会过白名单（只许 `F7 F8 F9 F10 F12`）。写入白名单外的键位——尤其是
+  方向键、`PageUp`/`PageDown`、`Space`、`Enter`、`Escape`——会被**拒绝并退回默认值**，
+  同时写日志。配置文件不是可信输入（L7）。
+
 ---
 
 ## 8. 风险登记
 
+状态列于 2026-08-20 更新。
+
 | 风险 | 影响 | 缓解 | 状态 |
 |---|---|---|---|
+| **M0 九项真机验收被搁置** | 整套窗口行为假设未在真实直播机上证实 | 门未撤销，清单在 `docs/M0-验收清单.md`；上线前必须补做 | 🔴 **当前最大悬空项** |
+| **全部 WPF 代码未经编译** | 首次构建可能大量报错 | Core 侧可在任意平台 `dotnet test`；App 侧只能在 Windows 上验 | 🔴 待首次 `dotnet build` |
 | WPS 抢占 Z 序 | 字不可见 | 心跳置顶；M0 已用红块实测通过 | ✅ 已验证 |
-| `AllowsTransparency` 关闭硬件加速导致淡入卡顿 | 观感差 | L3 限定为带状区域；M0 验收第 7 项实测 | ⚠️ M0 待验 |
-| 全局热键被其他软件占用 | 键无反应且无提示 | 注册失败时状态栏明确告警 | 设计已覆盖 |
-| 输入法 Enter 误触发 | 半截字上屏 | L8 + M3 验收 | 设计已覆盖 |
-| 志愿者输错书卷 | 屏上出错 | 报错只在主屏；副屏保持原状 | 设计已覆盖 |
-| 直播中程序崩溃 | 事故 | 全局异常捕获；叠加层与控制窗解耦，控制窗崩了叠加层内容仍在 | M5 |
+| `AllowsTransparency` 关闭硬件加速导致淡入卡顿 | 观感差 | L3 限定为带状区域；**逃生口已实现**：`animation.fadeMs=0` 即无动画直切，改配置不改代码；控制窗口直接显示实测帧率 | ⚠️ 缓解就位，实测待 M0 第 7 项 |
+| 全局热键被其他软件占用 | 键无反应且无提示 | 注册失败时状态栏**点名到具体键位**告警 | ✅ 已实现 |
+| **误注册 PPT 按键**（本项目最严重的回归） | 操作员再也翻不了 PPT | 两道闸：`HotkeyWhitelist` 过键名 + `ToVirtualKey` 映射表只有那五个键；配置文件视为不可信输入；27 条单测盯着 | ✅ 已实现 |
+| 输入法 Enter 误触发 | 半截字上屏 | `AcceptsReturn=False` + **全窗口无任何 `IsDefault` 按钮** + 组合态跟踪（组合中拒绝 F9 送出） | ✅ 已实现，行为待真机验 |
+| 志愿者输错书卷 | 屏上出错 | 报错只在主屏；副屏保持原状。**代价见 §5.1**：结构像引用的中文短语也会被拦下 | ✅ 已实现 |
+| 直播中程序崩溃 | 事故 | 三通道全局异常捕获 → 写日志 → 继续运行；叠加层与控制窗解耦，控制窗崩了叠加层内容仍在；诊断区有「强制抛异常」按钮可现场自证 | ✅ 已实现 |
+| `FormattedText` 与 `TextBlock` 行高模型不完全一致 | 字号算偏，可能差一行 | 两侧共用同一行高常量 + `LineStackingStrategy=BlockLineHeight` 强行对齐 | ⚠️ 理论一致，待真机核 |
+| 单文件发布时 SQLite 原生库加载失败 | 经文查询全废 | `IncludeNativeLibrariesForSelfExtract=true` | ⚠️ 待首次发布验 |
 | NIV 1984 授权 | 法务风险 | v1 不含英文；上线前由 Crossmap 确认，或改用 ESV/KJV/WEB | ⏸ 阻塞 P1-1 |
 
 ---
@@ -413,3 +531,53 @@ public interface IOverlayController
 3. M0 通过后：M1 → M2 → M3 → M4 → M5 → M6，逐个里程碑提交
 4. 每个里程碑结束时输出：完成项、验收自测结果、未决问题
 5. 遇到与锁定决策冲突的情况：停止，报告，不自行变通
+
+### 实际执行记录（2026-08-20）
+
+第 2、3 步**没有按原定顺序走**：M0 尖刺交付后，操作员决定暂时搁置九项真机验收，
+让开发先往下推进。因此 M1–M6 是在 M0 门未过的情况下完成的。
+
+| 提交 | 内容 | 编译/测试状态 |
+|---|---|---|
+| M0 | 透明叠加层尖刺 + 解决方案骨架 | 未编译 |
+| M1 | `Pulpit.Core` 数据层与引用解析 | 语义已用 Python 原型在真库上验证（§6 全 34 条绿）；C# 未编译 |
+| M2 | 叠加层渲染 | 未编译 |
+| M3 | 控制窗口与输入 | 未编译 |
+| M4 | 全局热键 | 未编译 |
+| M5 | 配置与健壮性 | `ConfigStore` 有单测；未编译 |
+| M6 | 打包 + 志愿者上手卡 | 未编译，未发布 |
+
+开发在 macOS 上进行，而 WPF（`net8.0-windows`）在 macOS 上**连编译都不支持**，
+`Pulpit.App` 因此完全没有经过编译器检查。`Pulpit.Core` 与其 75 个测试方法是纯 `net8.0`，
+在任意平台都能 `dotnet test`。
+
+**补做顺序建议**：`dotnet test`（Core 转绿）→ `dotnet build`（App 首次编译）→
+M0 九项真机验收 → M2/M3/M4 各自的真机验收项 → M6 彩排。
+
+---
+
+## 11. 计划书修订记录
+
+### 2026-08-20 —— 首轮实现后的事实校正
+
+计划书是本项目的契约，改它必须留痕。本轮改动全部源于**在真库上核实**或**实现中发现原方案不可行**，
+**§1 锁定决策未作任何改动**（核实后未发现事实错误）。
+
+| # | 位置 | 原文 | 改为 | 依据 |
+|---|---|---|---|---|
+| 1 | §3 M2 验收 | 最长节（太 23:13，**119 字**） | 最长节（申 30:9-10，**106 字**） | 119 字是 `text_raw` 长度；M2 渲染 `text_display`，太 23:13 清洗后只有 60 字，验不出溢出。全库 `text_display` 最长为 106 字，且申 30:9-10 本身是并节组（最长文本 + 强制单页 = 最坏情况） |
+| 2 | §3 M2 实现 | 带状容器 + `Viewbox`（`Stretch="Uniform"`）自适应字号 | 二分搜索最大可容字号，`FormattedText` 离线测量 | `Viewbox` 给子元素无限宽度，`TextWrapping` 永不生效；退而给固定宽度则换行点在 `MaxFontSize` 下算出，缩小后字号偏小。最坏情况实测 35px vs 46px，差 30% |
+| 3 | §3 M2 | （无） | 补「页脚行高必须固定预留，不能用 `Auto`」 | 出处标签字号 = 正文字号 × 40%，正文字号又由「总高 − 页脚高」算出，`Auto` 形成循环 |
+| 4 | §3 M4 | 挂在 message-only 窗口上 | 挂在自建 0×0 隐藏窗口（带 `WS_EX_TOOLWINDOW`） | 避开 `HwndSourceParameters.ParentWindow=HWND_MESSAGE` 与 `WindowStyle` 的组合细节；效果一致 |
+| 5 | §3 M6 | DB 随包，首次运行复制 | DB **嵌入为程序集资源**，首次运行解出 | 单文件发布时 exe 旁边没有别的文件，而 SQLite 需要真实文件路径 |
+| 6 | §3 M0 | （无状态标注） | 标注九项真机验收已搁置 | 操作员 2026-08-20 决定 |
+| 7 | §4 | 含 `ViewModels/`、`Assets/bible_cuv.db` | 改为实际结构，并列出差异与原因 | 未使用 MVVM（CLAUDE.md 禁止未经确认引入 MVVM 框架）；DB 改嵌入资源 |
+| 8 | §5 | （无） | 新增 §5.1 三态语义的已知缺口、§5.2 契约实现差异表 | `晚上7:30` 与 `abc3:16` 结构同形，会被报错拦下——这是原契约未定义的情形，非缺陷，待产品决定 |
+| 9 | §6 | （无） | 标注 34 条全部核实无误，补三个「最坏情况」数据 | 逐条在 `bible_cuv.db` 上重跑 |
+| 10 | §7 | 缺 `minFontSize`；`fadeMs` 语义未定义 0 | 补字段；明确 `fadeMs=0` 为无动画直切；补热键白名单行为 | 二分字号需要下限；`fadeMs=0` 是 M0 第 7 项的逃生口 |
+| 11 | §8 | 状态列停留在设计期 | 全表更新，新增 5 行风险 | M0 搁置与「全部 WPF 代码未编译」是当前两个最大悬空项，必须写进风险登记 |
+| 12 | §10 | 仅有原定顺序 | 补「实际执行记录」与补做顺序建议 | 实际未按原定顺序执行，需留痕 |
+
+**核实后确认无误、未作改动的事实**：§1 全部 15 条锁定决策 · §2 功能分级 · §6 全部 34 条测试用例 ·
+并节 81 组 / 82 个被合并节号 · 31103 节 / 478 条别名 / 1189 行 `chapter_info` / 66 书卷 ·
+L3 的「带状区域约 1920×324」（1080 × 0.30 = 324）。
