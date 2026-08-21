@@ -1,5 +1,8 @@
 @echo off
 setlocal
+REM 本文件是 UTF-8 编码。默认 GBK 代码页会把多字节注释误读成命令
+REM（曾把第 17 行半截注释当命令执行），所以先切 UTF-8 代码页再往下解析。
+chcp 65001 >nul
 
 REM Pulpit 单文件发布（M6）。需要 .NET 8 SDK，只能在 Windows x64 上跑。
 REM 产物：publish\win-x64\Pulpit.exe —— 在未装 .NET 运行时的干净 Windows 上双击可用。
