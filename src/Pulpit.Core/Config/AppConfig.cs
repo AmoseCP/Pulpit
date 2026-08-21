@@ -362,6 +362,13 @@ public sealed record TextConfig
     /// </summary>
     public string EnglishCode { get; init; } = "NIV2011";
 
+    /// <summary>
+    /// 中英对照：F9 投放经文时每页英文在上、中文在下。默认关闭。
+    /// 需要库中有英文译本；英文有空档的节（NIV 归脚注的，如太 17:21）该页只出中文。
+    /// F10 仍投纯英文，不受此开关影响。
+    /// </summary>
+    public bool Bilingual { get; init; }
+
     internal TextConfig Sanitize(List<string> notes)
     {
         if (string.IsNullOrWhiteSpace(EnglishCode))

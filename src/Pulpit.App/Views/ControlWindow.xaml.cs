@@ -40,8 +40,20 @@ public partial class ControlWindow : Window
     private AppConfig _config;
     private readonly string? _databaseVersion;
 
-    /// <summary>F10 要投的英文译本；null = 库里没有英文译本（P0-9 提示「未安装」）。</summary>
-    private readonly TranslationInfo? _english;
+    /// <summary>
+    /// F10 与中英对照当前用的英文译本；null = 库里没有英文译本（P0-9 提示「未安装」）。
+    /// 可在 ③ 操作 的下拉里切换（限 <see cref="_englishOptions"/> 之内）。
+    /// </summary>
+    private TranslationInfo? _english;
+
+    /// <summary>库中全部英文译本，供下拉切换。空 = 未安装，下拉与对照开关都禁用。</summary>
+    private readonly IReadOnlyList<TranslationInfo> _englishOptions;
+
+    /// <summary>中英对照（英上中下）。只作用于 F9 的经文投放；F10 仍投纯英文。</summary>
+    private bool _bilingual;
+
+    /// <summary>初始化译本下拉时抑制 SelectionChanged，同 <see cref="_loadingAppearance"/> 的道理。</summary>
+    private bool _loadingTranslations = true;
 
     /// <summary>
     /// 副屏当前内容所用的译本。原文/清洗版切换要**原地重投**（P1-4），
@@ -71,6 +83,7 @@ public partial class ControlWindow : Window
         ContentComposer composer,
         VerseSearchIndex? searchIndex,
         TranslationInfo? english,
+        IReadOnlyList<TranslationInfo> englishOptions,
         AppConfig config,
         string? databaseVersion,
         string? databaseError)
@@ -79,9 +92,11 @@ public partial class ControlWindow : Window
         _composer = composer ?? throw new ArgumentNullException(nameof(composer));
         _searchIndex = searchIndex;
         _english = english;
+        _englishOptions = englishOptions ?? [];
         _config = config ?? throw new ArgumentNullException(nameof(config));
         _databaseVersion = databaseVersion;
         _useRawText = config.Text.UseRawText;
+        _bilingual = config.Text.Bilingual && english is not null;
 
         InitializeComponent();
 
@@ -100,6 +115,7 @@ public partial class ControlWindow : Window
         }
 
         RawTextToggle.IsChecked = _useRawText;
+        LoadTranslationControls();
         RefreshHistory();
         LoadAppearanceControls();
 
@@ -131,6 +147,12 @@ public partial class ControlWindow : Window
     public event EventHandler? TextModeChanged;
 
     /// <summary>
+    /// 操作员换了英文译本或切了中英对照。<c>App</c> 据此写
+    /// <c>text.englishCode</c> / <c>text.bilingual</c>。
+    /// </summary>
+    public event EventHandler? EnglishSettingsChanged;
+
+    /// <summary>
     /// 外观被改动（P1-3）。<c>App</c> 据此调 <c>OverlayWindow.ApplyConfig</c>，**不落盘**。
     /// </summary>
     public event EventHandler<AppConfig>? AppearanceChanged;
@@ -140,6 +162,12 @@ public partial class ControlWindow : Window
 
     /// <summary>当前是否显示原文（<c>text_raw</c>）。</summary>
     public bool UseRawText => _useRawText;
+
+    /// <summary>当前英文译本的 code（写回 <c>text.englishCode</c>）；null = 未安装。</summary>
+    public string? EnglishCode => _english?.Code;
+
+    /// <summary>中英对照是否开启（写回 <c>text.bilingual</c>）。</summary>
+    public bool BilingualEnabled => _bilingual;
 
     /// <summary>热键子系统的状态文本，由 <c>App</c> 在注册完成后写入。</summary>
     public string HotkeyStatus { get; set; } = "热键：未启用";
@@ -316,9 +344,19 @@ public partial class ControlWindow : Window
 
     private void OnSendEnglish(object sender, RoutedEventArgs e) => SendEnglish();
 
+    /// <summary>
+    /// F9/按钮的主语言合成：对照开启且有英文译本时走双语（英上中下），否则纯中文。
+    /// 两种结果的 <c>_activeTransId</c> 都记 1——「1」在本类里的含义是
+    /// 「以中文为主的那种显示」，原地重投（<see cref="ReprojectPreservingPage"/>）据此选路。
+    /// </summary>
+    private ComposeResult ComposePrimary(string input) =>
+        _bilingual && _english is not null
+            ? _composer.ComposeBilingual(input, _useRawText, _english.Id)
+            : _composer.Compose(input, _useRawText);
+
     private void Send(string input)
     {
-        ComposeResult result = _composer.Compose(input, _useRawText);
+        ComposeResult result = ComposePrimary(input);
 
         if (result.HasError)
         {
@@ -555,7 +593,10 @@ public partial class ControlWindow : Window
         int page = _overlay.CurrentContent?.Index ?? 0;
 
         // 沿用屏上正在显示的译本（P1-1）：英文经文切原文/清洗版不该悄悄变回中文。
-        ComposeResult result = _composer.Compose(_lastSentInput, _useRawText, _activeTransId);
+        // _activeTransId == 1 表示「以中文为主的显示」，此时要连对照状态一起沿用。
+        ComposeResult result = _activeTransId == 1
+            ? ComposePrimary(_lastSentInput)
+            : _composer.Compose(_lastSentInput, _useRawText, _activeTransId);
 
         if (!result.HasContent)
         {
@@ -570,6 +611,95 @@ public partial class ControlWindow : Window
 
         _overlay.Show(content);
         RefreshDiagnostics();
+    }
+
+    // ================= 英文译本与中英对照 =================
+
+    /// <summary>
+    /// 把英文译本下拉与对照开关灌上初值。未安装英文译本时两个控件都禁用——
+    /// 键位与控件永远存在（P0-9 的同一个道理），只是此刻无事可做。
+    /// </summary>
+    private void LoadTranslationControls()
+    {
+        _loadingTranslations = true;
+
+        try
+        {
+            if (_englishOptions.Count == 0)
+            {
+                EnglishVersionList.IsEnabled = false;
+                BilingualToggle.IsEnabled = false;
+                EnglishVersionList.ToolTip = "未安装英文译本";
+                BilingualToggle.ToolTip = "未安装英文译本，无法对照显示";
+                return;
+            }
+
+            // TranslationInfo 是 record（值相等），App 层另查一遍得到的 _english
+            // 也能与 ItemsSource 里的项对上号。
+            EnglishVersionList.DisplayMemberPath = nameof(TranslationInfo.Code);
+            EnglishVersionList.ItemsSource = _englishOptions;
+            EnglishVersionList.SelectedItem = _english;
+
+            if (EnglishVersionList.SelectedItem is null)
+            {
+                EnglishVersionList.SelectedIndex = _englishOptions.Count - 1;
+            }
+
+            BilingualToggle.IsChecked = _bilingual;
+        }
+        finally
+        {
+            _loadingTranslations = false;
+        }
+    }
+
+    /// <summary>
+    /// 换英文译本。立即生效并记住（<c>text.englishCode</c>）；副屏若正显示英文或
+    /// 对照内容，原地换版本并保持页位——彩排时切 1984/2011 对比措辞就靠这条。
+    /// </summary>
+    private void OnEnglishVersionChanged(object sender, SelectionChangedEventArgs e)
+    {
+        if (_loadingTranslations
+            || EnglishVersionList.SelectedItem is not TranslationInfo selected
+            || selected.Id == _english?.Id)
+        {
+            return;
+        }
+
+        _english = selected;
+        AppLog.Info($"英文译本切换为 {selected.Code}（trans_id={selected.Id}）。");
+
+        EnglishSettingsChanged?.Invoke(this, EventArgs.Empty);
+        RefreshStatusBar();
+
+        if (_activeTransId != 1)
+        {
+            // 副屏正显示纯英文：跟着换版本。
+            _activeTransId = selected.Id;
+            ReprojectPreservingPage();
+        }
+        else if (_bilingual)
+        {
+            // 对照显示中：英文行跟着换版本。纯中文显示不重投，重投只是无谓的闪动。
+            ReprojectPreservingPage();
+        }
+    }
+
+    /// <summary>
+    /// 中英对照开关。立即生效并记住（<c>text.bilingual</c>）；副屏若正显示
+    /// 以中文为主的经文，原地重投补上/撤下英文行。纯英文（F10）显示不受影响。
+    /// </summary>
+    private void OnToggleBilingual(object sender, RoutedEventArgs e)
+    {
+        _bilingual = BilingualToggle.IsChecked == true;
+        AppLog.Info($"中英对照{(_bilingual ? "开启（英上中下）" : "关闭")}。");
+
+        EnglishSettingsChanged?.Invoke(this, EventArgs.Empty);
+
+        if (_activeTransId == 1)
+        {
+            ReprojectPreservingPage();
+        }
     }
 
     private void OnSample(object sender, RoutedEventArgs e)

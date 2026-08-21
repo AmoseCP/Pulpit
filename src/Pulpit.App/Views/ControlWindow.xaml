@@ -171,10 +171,25 @@
                             <Button Content="英文 (F10)" Click="OnSendEnglish" MinWidth="104" Margin="0" />
                         </StackPanel>
                         <CheckBox x:Name="RawTextToggle" Click="OnToggleRawText"
-                                  Margin="0,0,0,10" VerticalAlignment="Center"
+                                  Margin="0,0,0,8" VerticalAlignment="Center"
                                   ToolTip="勾选后显示 text_raw：保留敬空、译注括号、雅歌说话人标注。默认显示已清洗的 text_display。">
                             <TextBlock Text="显示原文（含敬空与译注）" />
                         </CheckBox>
+
+                        <!-- P1-1 后续：英文译本切换 + 中英对照。下拉与勾选框都不响应 Enter，
+                             不违反 L8（全窗口仍然没有任何 IsDefault 按钮）。 -->
+                        <StackPanel Orientation="Horizontal" Margin="0,0,0,10">
+                            <TextBlock Text="英文译本" VerticalAlignment="Center" Margin="0,0,8,0" />
+                            <ComboBox x:Name="EnglishVersionList" Width="120" Height="26"
+                                      VerticalContentAlignment="Center"
+                                      SelectionChanged="OnEnglishVersionChanged"
+                                      ToolTip="F10 与中英对照用的英文译本。切换实时生效并记住。" />
+                            <CheckBox x:Name="BilingualToggle" Click="OnToggleBilingual"
+                                      VerticalAlignment="Center" Margin="16,0,0,0"
+                                      ToolTip="勾选后投放 (F9) 每页英文在上、中文在下。英文缺该节时（NIV 归脚注的）只出中文。F10 仍投纯英文。">
+                                <TextBlock Text="中英对照（英上中下）" />
+                            </CheckBox>
+                        </StackPanel>
 
                         <StackPanel Orientation="Horizontal">
                             <TextBlock Text="样例：" VerticalAlignment="Center" Margin="0,0,8,0"

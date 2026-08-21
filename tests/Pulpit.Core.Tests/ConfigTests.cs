@@ -28,6 +28,7 @@ public sealed class ConfigTests
         Assert.Equal(250, config.Animation.FadeMs);
         Assert.False(config.Text.UseRawText);
         Assert.Equal("NIV2011", config.Text.EnglishCode);
+        Assert.False(config.Text.Bilingual);
 
         Assert.Equal("F9", config.Hotkeys.SendZh);
         Assert.Equal("F10", config.Hotkeys.SendEn);

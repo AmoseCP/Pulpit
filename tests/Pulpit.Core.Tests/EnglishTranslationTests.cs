@@ -67,6 +67,23 @@ public sealed class TranslationSelectorTests
         Assert.Null(TranslationSelector.SelectEnglish([Cuv], "NIV2011"));
         Assert.Null(TranslationSelector.SelectEnglish([], null));
     }
+
+    [Fact]
+    public void ListEnglishFiltersOutChineseAndSortsById()
+    {
+        // 设置界面的译本下拉用这个列表——中文库绝不能混进可切换项。
+        IReadOnlyList<TranslationInfo> english =
+            TranslationSelector.ListEnglish([Niv2011, Cuv, Niv1984]);
+
+        Assert.Equal([Niv1984, Niv2011], english);
+    }
+
+    [Fact]
+    public void ListEnglishIsEmptyWhenNoEnglishInstalled()
+    {
+        Assert.Empty(TranslationSelector.ListEnglish([Cuv]));
+        Assert.Empty(TranslationSelector.ListEnglish([]));
+    }
 }
 
 /// <summary>
@@ -139,5 +156,95 @@ public sealed class EnglishLookupTests
         Assert.Equal(3, verses.Count);
         Assert.All(verses, v => Assert.Equal(v.MergeHead, v.MergeLast));
         Assert.Equal("Psalms", verses[0].BookName);
+    }
+}
+
+/// <summary>
+/// 中英对照合成（英上中下）。中文是主语言：分页、标签、报错全按中文走，
+/// 英文只是每页的补充行——这些性质在这里钉死。
+/// </summary>
+[Collection(BibleCollection.Name)]
+public sealed class BilingualComposeTests
+{
+    private readonly BibleFixture _fx;
+    private readonly ContentComposer _composer;
+    private readonly TranslationInfo _english;
+
+    public BilingualComposeTests(BibleFixture fixture)
+    {
+        _fx = fixture;
+        _composer = new ContentComposer(_fx.Repository, _fx.Parser);
+        _english = TranslationSelector.SelectEnglish(
+            _fx.Repository.GetTranslations(), new Pulpit.Core.Config.TextConfig().EnglishCode)!;
+    }
+
+    [Fact]
+    public void EnglishOnTopChineseBelowSeparatedByNewline()
+    {
+        ComposeResult result = _composer.ComposeBilingual("约3:16", useRawText: false, _english.Id);
+
+        Assert.True(result.HasContent);
+        Page page = Assert.Single(result.Content!.Pages);
+
+        // 标签与出处按中文走——现场主语言是中文，操作员核对的也是中文出处。
+        Assert.Equal("约翰福音 3:16", page.Label);
+        Assert.Equal(["约翰福音 3:16"], result.Content.SourceLabels);
+
+        string[] halves = page.Body.Split('\n');
+        Assert.Equal(2, halves.Length);
+        Assert.StartsWith("For God so loved the world", halves[0]);
+        Assert.Contains("神爱世人", halves[1]);
+    }
+
+    [Fact]
+    public void MergedGroupStaysOnePageWithAllEnglishVersesJoined()
+    {
+        // 诗 8:6 落在中文并节组 6-8：对照下仍是一页，英文行并入该组全部三节。
+        ComposeResult result = _composer.ComposeBilingual("诗8:6", useRawText: false, _english.Id);
+
+        Page page = Assert.Single(result.Content!.Pages);
+        Assert.Equal("诗篇 8:6-8", page.Label);
+
+        string english = page.Body.Split('\n')[0];
+        IReadOnlyList<VerseText> verses = _fx.Repository.Lookup(new VerseRef(19, 8, 6, 8), _english.Id);
+        Assert.Equal(3, verses.Count);
+        Assert.All(verses, v => Assert.Contains(v.TextDisplay, english));
+    }
+
+    [Fact]
+    public void EnglishGapFallsBackToChineseOnlyInsteadOfFailing()
+    {
+        // NIV 把太 17:21 归入脚注。纯英文投放报错（见上），但对照模式的主语言
+        // 是中文——缺一行英文不该把整次投放拦下来，该页只出中文。
+        ComposeResult bilingual = _composer.ComposeBilingual("太17:21", useRawText: false, _english.Id);
+        ComposeResult chinese = _composer.Compose("太17:21");
+
+        Assert.True(bilingual.HasContent);
+        Assert.Equal(
+            Assert.Single(chinese.Content!.Pages),
+            Assert.Single(bilingual.Content!.Pages));
+    }
+
+    [Fact]
+    public void ConsecutiveReferencesEachPagePaired()
+    {
+        ComposeResult result = _composer.ComposeBilingual("约3:16;罗8:28", useRawText: false, _english.Id);
+
+        Assert.True(result.HasContent);
+        Assert.Equal(2, result.Content!.PageCount);
+        Assert.Equal(2, result.Content.Sources.Count);
+        Assert.All(result.Content.Pages, p => Assert.Contains('\n', p.Body));
+    }
+
+    [Fact]
+    public void ErrorsAndFreeTextFollowTheChinesePath()
+    {
+        // 三态语义与 Compose 完全一致：报错按中文报，自由文本原样上屏，空输入无事发生。
+        Assert.True(_composer.ComposeBilingual("约3:99", useRawText: false, _english.Id).HasError);
+
+        ComposeResult freeText = _composer.ComposeBilingual("欢迎弟兄姊妹", useRawText: false, _english.Id);
+        Assert.Equal(ContentKind.FreeText, freeText.Content!.Kind);
+
+        Assert.True(_composer.ComposeBilingual("  ", useRawText: false, _english.Id).IsEmpty);
     }
 }

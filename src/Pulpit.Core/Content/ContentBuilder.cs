@@ -33,6 +33,13 @@ public sealed record ResolvedReference(VerseRef Reference, IReadOnlyList<VerseTe
     }
 }
 
+/// <summary>
+/// 一处引用的中英对照材料：中文（主语言）的解析结果 + 同一引用查出的英文经文。
+/// 英文列表允许为空（该引用范围在英文库中全是空档），对应页退化为只出中文。
+/// </summary>
+public sealed record BilingualReference(
+    ResolvedReference Primary, IReadOnlyList<VerseText> English);
+
 /// <summary><c>VerseText[]</c> → <c>Page[]</c>。</summary>
 public static class ContentBuilder
 {
@@ -113,6 +120,75 @@ public static class ContentBuilder
             Sources = sources,
             SourceLabels = labels,
         };
+    }
+
+    /// <summary>
+    /// 中英对照（英上中下）：分页、出处标签、页序全部沿用中文——一个并节组一页，
+    /// 每页正文是「该组的英文（可能多节，空格连接）+ 换行 + 该组的中文」。
+    /// </summary>
+    /// <remarks>
+    /// <para><b>为什么按中文分页而不是英文</b>：中文是现场的主语言，并节组是它的
+    /// 自然页界；英文逐节独立（见 EnglishHasNoMergedVerses 测试），照英文分页会把
+    /// 诗 8:6-8 这类中文一页的内容切成三页，翻页节奏跟着英文走就本末倒置了。</para>
+    /// <para><b>英文空档不报错</b>：NIV 把个别节归入脚注（如太 17:21），
+    /// 对照模式下该页只出中文即可——为一节英文把整次投放拦下来，比缺一行英文更糟。
+    /// 纯英文投放（F10）仍按 <see cref="Pulpit.Core.Content.ContentComposer"/> 的规则报错。</para>
+    /// </remarks>
+    public static DisplayContent FromBilingualReferences(
+        IReadOnlyList<BilingualReference> resolved,
+        bool useRawText = false)
+    {
+        ArgumentNullException.ThrowIfNull(resolved);
+
+        var pages = new List<Page>();
+        var sources = new List<VerseRef>(resolved.Count);
+        var labels = new List<string>(resolved.Count);
+
+        foreach (BilingualReference pair in resolved)
+        {
+            sources.Add(pair.Primary.Reference);
+            labels.Add(pair.Primary.Label);
+
+            foreach (VerseText verse in pair.Primary.Verses)
+            {
+                string chinese = useRawText ? verse.TextRaw : verse.TextDisplay;
+                string english = JoinEnglish(pair.English, verse.MergeHead, verse.MergeLast, useRawText);
+
+                pages.Add(new Page(
+                    Label: verse.Label,
+                    Body: english.Length == 0 ? chinese : english + "\n" + chinese));
+            }
+        }
+
+        return new DisplayContent
+        {
+            Kind = ContentKind.Scripture,
+            Pages = pages,
+            Index = 0,
+            Sources = sources,
+            SourceLabels = labels,
+        };
+    }
+
+    /// <summary>
+    /// 取出落在中文并节组 [<paramref name="mergeHead"/>, <paramref name="mergeLast"/>]
+    /// 范围内的英文经文，按节序空格连接。范围判交而不是判等：万一英文库也有并节，
+    /// 只要与该组有交集就归入这一页。
+    /// </summary>
+    private static string JoinEnglish(
+        IReadOnlyList<VerseText> english, int mergeHead, int mergeLast, bool useRawText)
+    {
+        var parts = new List<string>();
+
+        foreach (VerseText verse in english)
+        {
+            if (verse.MergeHead <= mergeLast && verse.MergeLast >= mergeHead)
+            {
+                parts.Add(useRawText ? verse.TextRaw : verse.TextDisplay);
+            }
+        }
+
+        return string.Join(' ', parts);
     }
 
     /// <summary>

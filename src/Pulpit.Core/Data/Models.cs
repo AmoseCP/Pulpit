@@ -73,6 +73,27 @@ public static class TranslationSelector
 
         return fallback;
     }
+
+    /// <summary>
+    /// 库中全部英文译本，按 id 升序（导入顺序，1984 在 2011 前面）。
+    /// 供设置界面的译本下拉列出可切换项；空列表 = 未安装英文译本。
+    /// </summary>
+    public static IReadOnlyList<TranslationInfo> ListEnglish(
+        IReadOnlyList<TranslationInfo> translations)
+    {
+        var english = new List<TranslationInfo>();
+
+        foreach (TranslationInfo t in translations)
+        {
+            if (string.Equals(t.Lang, "en", StringComparison.OrdinalIgnoreCase))
+            {
+                english.Add(t);
+            }
+        }
+
+        english.Sort((a, b) => a.Id.CompareTo(b.Id));
+        return english;
+    }
 }
 
 /// <summary>

@@ -70,6 +70,59 @@ public sealed class ContentComposer
     /// </param>
     public ComposeResult Compose(string? input, bool useRawText = false, int transId = 1)
     {
+        ComposeResult? early = ResolveReferences(input, transId, out List<ResolvedReference> resolved);
+
+        return early ?? ComposeResult.Ok(ContentBuilder.FromReferences(resolved, useRawText));
+    }
+
+    /// <summary>
+    /// 中英对照投放（英上中下）。中文（trans_id=1）是主语言：解析、报错、出处标签、
+    /// 分页全按中文走；英文只是每页的补充行，英文有空档的节该页退化为只出中文
+    /// （NIV 把个别节归入脚注是常态，为它报错会把整次投放拦下来，得不偿失）。
+    /// </summary>
+    /// <param name="englishTransId">英文译本的 trans_id（来自 <c>TranslationSelector.SelectEnglish</c>）。</param>
+    public ComposeResult ComposeBilingual(string? input, bool useRawText, int englishTransId)
+    {
+        ComposeResult? early = ResolveReferences(input, transId: 1, out List<ResolvedReference> resolved);
+
+        if (early is not null)
+        {
+            return early;
+        }
+
+        // early 为 null 意味着解析与查询都走通了，_repository 必非 null。
+        var pairs = new List<BilingualReference>(resolved.Count);
+
+        foreach (ResolvedReference item in resolved)
+        {
+            // 英文按中文结果的**真实范围**查（首节 merge_head 到末节 merge_last），
+            // 不能按原始输入：输入「诗8:6」时中文并节组的真实范围是 6-8，
+            // 按输入查英文只会拿到第 6 节，7-8 两节就丢了（与出处标签同一个道理）。
+            VerseText first = item.Verses[0];
+            VerseText last = item.Verses[^1];
+
+            var range = new VerseRef(
+                item.Reference.BookId,
+                first.Chapter,
+                first.MergeHead,
+                last.MergeLast == first.MergeHead ? null : last.MergeLast);
+
+            pairs.Add(new BilingualReference(item, _repository!.Lookup(range, englishTransId)));
+        }
+
+        return ComposeResult.Ok(ContentBuilder.FromBilingualReferences(pairs, useRawText));
+    }
+
+    /// <summary>
+    /// 三态判定与逐段解析查询，中文/英文/对照三条投放路径共用。
+    /// 返回 null 表示每一段都解析成功且查到文本（结果在 <paramref name="resolved"/> 里）；
+    /// 非 null 则是该直接返回给调用方的早退结果（空输入 / 自由文本 / 报错）。
+    /// </summary>
+    private ComposeResult? ResolveReferences(
+        string? input, int transId, out List<ResolvedReference> resolved)
+    {
+        resolved = [];
+
         string normalized = TextNormalizer.NormalizeInput(input);
 
         if (normalized.Length == 0)
@@ -96,7 +149,6 @@ public sealed class ContentComposer
         }
 
         bool multiple = segments.Length > 1;
-        var resolved = new List<ResolvedReference>(segments.Length);
 
         foreach (string segment in segments)
         {
@@ -128,7 +180,7 @@ public sealed class ContentComposer
             resolved.Add(new ResolvedReference(reference, verses));
         }
 
-        return ComposeResult.Ok(ContentBuilder.FromReferences(resolved, useRawText));
+        return null;
     }
 
     private static string Decorate(string segment, string error, bool multiple)
