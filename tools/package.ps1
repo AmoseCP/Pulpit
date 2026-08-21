@@ -46,6 +46,13 @@ Pulpit $version - Portable 版
 这是 SmartScreen 对"从网络下载的未签名程序"的例行提示,不是病毒警告。
 处理:点「更多信息」→「仍要运行」;或先右键 zip 文件 → 属性 →
 勾选「解除锁定」→ 确定,再解压。U 盘拷贝的一般不会出现此提示。
+
+【提示「应用控制策略阻止了此文件」且没有"仍要运行"按钮】
+说明该电脑开启了 Windows 11 的「智能应用控制(Smart App Control)」,
+它会无条件拦截无签名的新程序。处置:设置 → 隐私和安全性 →
+Windows 安全中心 → 应用和浏览器控制 → 智能应用控制设置 → 关。
+(注意:关闭后无法重新开启,除非重置系统;装过其他非商店软件的
+电脑上它通常已经自动关闭,遇到的概率不高。)
 "@ | Set-Content "$staging\说明.txt" -Encoding utf8
 $zip = "$repo\publish\Pulpit-$version-portable.zip"
 if (Test-Path $zip) { Remove-Item $zip -Force }
