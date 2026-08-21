@@ -149,11 +149,15 @@ public sealed class BibleRepository : IBibleRepository, IDisposable
         // GROUP BY v.merge_head 就是并节去重：一个并节组只出一行，
         // 因此 民1:20-21 出 1 条而不是 2 条（→ 1 页而不是 2 页）。
         // 组内每个节号的 text_display / merge_* 都相同，取哪一行都一样。
+        // 书卷名随译本语言（P1-1）：英文经文的出处标签是「John 3:16」而不是「约翰福音 3:16」。
         cmd.CommandText = """
-            SELECT v.book_id, b.name_zh, v.chapter, v.merge_head, v.merge_last,
+            SELECT v.book_id,
+                   CASE WHEN t.lang = 'zh' THEN b.name_zh ELSE b.name_en END,
+                   v.chapter, v.merge_head, v.merge_last,
                    v.text_display, v.text_raw
             FROM verses v
             JOIN books b ON b.id = v.book_id
+            JOIN translations t ON t.id = v.trans_id
             WHERE v.trans_id = $trans
               AND v.book_id = $book
               AND v.chapter = $chapter
@@ -175,7 +179,7 @@ public sealed class BibleRepository : IBibleRepository, IDisposable
         {
             results.Add(new VerseText(
                 BookId: reader.GetInt32(0),
-                BookNameZh: reader.GetString(1),
+                BookName: reader.GetString(1),
                 Chapter: reader.GetInt32(2),
                 MergeHead: reader.GetInt32(3),
                 MergeLast: reader.GetInt32(4),
@@ -221,6 +225,32 @@ public sealed class BibleRepository : IBibleRepository, IDisposable
                 MergeHead: reader.GetInt32(4),
                 MergeLast: reader.GetInt32(5),
                 TextDisplay: reader.GetString(6)));
+        }
+
+        return results;
+    }
+
+    /// <summary>
+    /// 库中已安装的全部译本（P1-1）。App 启动时据此解析 F10 要投的英文译本，
+    /// 见 <see cref="TranslationSelector.SelectEnglish"/>。
+    /// </summary>
+    public IReadOnlyList<TranslationInfo> GetTranslations()
+    {
+        ThrowIfDisposed();
+
+        using SqliteCommand cmd = _connection.CreateCommand();
+        cmd.CommandText = "SELECT id, code, name, lang FROM translations ORDER BY id;";
+
+        var results = new List<TranslationInfo>();
+
+        using SqliteDataReader reader = ExecuteReader(cmd);
+        while (reader.Read())
+        {
+            results.Add(new TranslationInfo(
+                Id: reader.GetInt32(0),
+                Code: reader.GetString(1),
+                Name: reader.GetString(2),
+                Lang: reader.GetString(3)));
         }
 
         return results;

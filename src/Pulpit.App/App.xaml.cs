@@ -108,6 +108,19 @@ public partial class App : System.Windows.Application
         VerseSearchIndex? searchIndex =
             _repository is null ? null : new VerseSearchIndex(_repository);
 
+        // P1-1：启动时定死 F10 投哪个英文译本。优先 text.englishCode（默认 NIV2011），
+        // 回退任一已安装英文译本，都没有则 F10 保持「未安装」占位提示（P0-9）。
+        TranslationInfo? english = _repository is null
+            ? null
+            : TranslationSelector.SelectEnglish(_repository.GetTranslations(), _config.Text.EnglishCode);
+
+        AppLog.Info(english is null
+            ? "英文译本：未安装，F10 走占位提示。"
+            : $"英文译本：{english.Code}（{english.Name}，trans_id={english.Id}）"
+              + (string.Equals(english.Code, _config.Text.EnglishCode, StringComparison.OrdinalIgnoreCase)
+                  ? string.Empty
+                  : $"——配置要的 {_config.Text.EnglishCode} 不在库中，已回退"));
+
         _overlay = new OverlayWindow(_config);
 
         // ShowActivated=False 已在 XAML 声明；Show() 不会夺取焦点。
@@ -121,7 +134,7 @@ public partial class App : System.Windows.Application
         _badge.ApplyConfig(_config);
 
         _control = new ControlWindow(
-            _overlay, composer, searchIndex, _config, databaseVersion, databaseError);
+            _overlay, composer, searchIndex, english, _config, databaseVersion, databaseError);
         _control.TargetScreenChanged += OnTargetScreenChanged;
         _control.TextModeChanged += OnTextModeChanged;
         _control.AppearanceChanged += OnAppearanceChanged;
@@ -291,7 +304,8 @@ public partial class App : System.Windows.Application
             return;
         }
 
-        _config = _config with { Text = new TextConfig { UseRawText = _control.UseRawText } };
+        // with 而不是 new TextConfig：整节重建会把 englishCode 悄悄抹回默认值。
+        _config = _config with { Text = _config.Text with { UseRawText = _control.UseRawText } };
         Persist($"正文来源 useRawText={_control.UseRawText}");
     }
 

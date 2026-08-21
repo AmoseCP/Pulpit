@@ -30,6 +30,12 @@ tmp/
 logs/
 *.log
 
+# ---- 英文译本源文件与转换脚本：版权正文不入仓（DEVELOPMENT_PLAN §8），本机保留 ----
+New International Version (1984) (US).xml
+NIV_en.SQLite3
+tools/build_*_db.py
+__pycache__/
+
 # ---- Claude Code 机器本地配置 ----
 .claude/settings.local.json
 .claude/learnings/

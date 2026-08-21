@@ -39,6 +39,15 @@ public partial class ControlWindow : Window
     private readonly SendHistory _history = new();
     private AppConfig _config;
     private readonly string? _databaseVersion;
+
+    /// <summary>F10 要投的英文译本；null = 库里没有英文译本（P0-9 提示「未安装」）。</summary>
+    private readonly TranslationInfo? _english;
+
+    /// <summary>
+    /// 副屏当前内容所用的译本。原文/清洗版切换要**原地重投**（P1-4），
+    /// 重投必须沿用屏上正在显示的语言——否则英文经文一切换正文来源就变回中文。
+    /// </summary>
+    private int _activeTransId = 1;
     private readonly DispatcherTimer _poll;
     private readonly Stopwatch _uptime = Stopwatch.StartNew();
     private readonly long _baselineWorkingSet;
@@ -61,6 +70,7 @@ public partial class ControlWindow : Window
         OverlayWindow overlay,
         ContentComposer composer,
         VerseSearchIndex? searchIndex,
+        TranslationInfo? english,
         AppConfig config,
         string? databaseVersion,
         string? databaseError)
@@ -68,6 +78,7 @@ public partial class ControlWindow : Window
         _overlay = overlay ?? throw new ArgumentNullException(nameof(overlay));
         _composer = composer ?? throw new ArgumentNullException(nameof(composer));
         _searchIndex = searchIndex;
+        _english = english;
         _config = config ?? throw new ArgumentNullException(nameof(config));
         _databaseVersion = databaseVersion;
         _useRawText = config.Text.UseRawText;
@@ -224,12 +235,83 @@ public partial class ControlWindow : Window
         Send(InputBox.Text);
     }
 
-    /// <summary>P0-9：F10 键位在 v1 必须存在，只是提示英文库未安装。</summary>
+    /// <summary>
+    /// F10 英文投放（P1-1）。两条路径，按副屏状态自动选：
+    /// </summary>
+    /// <remarks>
+    /// <list type="number">
+    /// <item><b>原地换语言</b>：副屏正在显示经文时，把同一处引用重查成英文并保持当前页位。
+    ///   讲道中最常见的动作是「中文投完了，补一版英文」，所以这条优先。</item>
+    /// <item><b>从输入投放</b>：副屏为空（或显示的是歌词/自由文本）时，投放输入框里的引用。</item>
+    /// </list>
+    /// <para>换回中文按 F9（重投输入）。库里没有英文译本时保持 P0-9 的占位提示——
+    /// 键位永远存在，志愿者的肌肉记忆从 v1 起就是对的。</para>
+    /// </remarks>
     public void SendEnglish()
     {
-        // L13：v1 仅中文，但键位必须在 v1 就建立起志愿者的肌肉记忆。
-        ShowMode("英文译本未安装（v1.1 补）", ModeLevel.Warning);
-        AppLog.Info("F10 被按下，但英文译本未安装。");
+        if (_english is null)
+        {
+            ShowMode("英文译本未安装", ModeLevel.Warning);
+            AppLog.Info("F10 被按下，但英文译本未安装。");
+            return;
+        }
+
+        if (IsComposing)
+        {
+            // 与 F9 同一个道理（L8）：组合中 InputBox.Text 是半成品，宁可不投。
+            ShowMode("输入法正在组合候选词，请先确认后再送出", ModeLevel.Warning);
+            AppLog.Info("英文投放被拒：输入法组合中。");
+            return;
+        }
+
+        bool inPlace = _overlay.IsContentVisible
+            && _overlay.CurrentContent is { Kind: ContentKind.Scripture }
+            && _lastSentInput is not null;
+
+        string input = inPlace ? _lastSentInput! : InputBox.Text;
+
+        ComposeResult result = _composer.Compose(input, _useRawText, _english.Id);
+
+        if (result.HasError)
+        {
+            // 英文的空档是常态（NIV 把 16 节归入脚注、个别章节号与中文有出入），
+            // 报错点名「英文」，操作员才知道中文版仍然投得出来。
+            ShowMode($"✗ 英文（{_english.Code}）：{result.Error}", ModeLevel.Error);
+            AppLog.Info($"英文投放被拒：{input} → {result.Error}");
+            return;
+        }
+
+        if (result.IsEmpty)
+        {
+            ShowMode("没有可投放的内容", ModeLevel.Hint);
+            return;
+        }
+
+        DisplayContent content = result.Content!;
+
+        if (content.Kind != ContentKind.Scripture)
+        {
+            // 自由文本没有「英文版」，F10 对它无事可做——静默换语言只会让人以为按键失灵。
+            ShowMode("F10 只投放经文的英文版，当前输入不是经文引用", ModeLevel.Warning);
+            return;
+        }
+
+        if (inPlace)
+        {
+            // 保持页位（与 P1-4 的原地重投同理）。中英分页数可能不同——
+            // 中文并节组一页、英文逐节一页（如诗 8:6-8），夹到末页即可。
+            int page = _overlay.CurrentContent?.Index ?? 0;
+            content.Index = Math.Min(page, Math.Max(0, content.PageCount - 1));
+        }
+
+        _lastSentInput = input;
+        _activeTransId = _english.Id;
+        _overlay.Show(content);
+
+        ShowMode($"英文经文 → {string.Join(" + ", content.SourceLabels)}（F9 换回中文）", ModeLevel.Scripture);
+        AppLog.Info($"英文投放（{_english.Code}）：{input}（{content.PageCount} 页）");
+
+        RefreshDiagnostics();
     }
 
     private void OnSendEnglish(object sender, RoutedEventArgs e) => SendEnglish();
@@ -255,6 +337,7 @@ public partial class ControlWindow : Window
         DisplayContent content = result.Content!;
 
         _lastSentInput = input;
+        _activeTransId = 1;   // F9/按钮永远投中文；英文只从 F10 进（P1-1）
         _overlay.Show(content);
         AppLog.Info($"投放：{input}（{content.Kind}，{content.PageCount} 页）");
 
@@ -471,7 +554,8 @@ public partial class ControlWindow : Window
 
         int page = _overlay.CurrentContent?.Index ?? 0;
 
-        ComposeResult result = _composer.Compose(_lastSentInput, _useRawText);
+        // 沿用屏上正在显示的译本（P1-1）：英文经文切原文/清洗版不该悄悄变回中文。
+        ComposeResult result = _composer.Compose(_lastSentInput, _useRawText, _activeTransId);
 
         if (!result.HasContent)
         {
@@ -1056,7 +1140,8 @@ public partial class ControlWindow : Window
 
         StatusDatabase.Text = !_composer.ScriptureAvailable
             ? "库：不可用"
-            : $"库：CUV v{_databaseVersion ?? "?"}{(_useRawText ? "（原文）" : string.Empty)}";
+            : $"库：CUV{(_english is null ? string.Empty : "+" + _english.Code)}"
+              + $" v{_databaseVersion ?? "?"}{(_useRawText ? "（原文）" : string.Empty)}";
 
         StatusIme.Text = IsComposing ? "输入法：组合中" : "输入法：待机";
         StatusHotkeys.Text = HotkeyStatus;

@@ -28,7 +28,7 @@ public sealed record ResolvedReference(VerseRef Reference, IReadOnlyList<VerseTe
 
             return first.MergeHead == last.MergeLast
                 ? first.Label
-                : $"{first.BookNameZh} {first.Chapter}:{first.MergeHead}-{last.MergeLast}";
+                : $"{first.BookName} {first.Chapter}:{first.MergeHead}-{last.MergeLast}";
         }
     }
 }

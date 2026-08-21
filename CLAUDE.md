@@ -123,7 +123,12 @@ M0 是**硬性 go/no-go 门**：必须先交付透明叠加层尖刺，由人工
   无窗口、握着单实例锁的僵尸）、`_loadingAppearance` 初值 true（XAML 解析期事件即开火）、
   IME 事件补 `handledEventsToo: true`、屏幕回退不覆写目标屏名、`OnDpiChanged` 延后定位、
   配置节 null 防护、书卷正则排除 `: , 、`
-- ⏸ 英文译本 v1.1 补；NIV 1984 授权待 Crossmap 确认，可能改用 ESV/KJV/WEB
+- ✅ P1-1 已解锁交付（2026-08-21）：F10 英文投放已实现（副屏正显示经文 →
+  原地换语言保页位，否则投输入框引用，F9 换回中文）。**两版 NIV 都已入库**：
+  NIV1984（trans_id=2，Zefania XML 源）、NIV2011（trans_id=3，MyBible 模块源，
+  已验明确为 2011 版）——默认即 NIV2011（`text.englishCode`）。译本源文件与
+  `tools/build_*_db.py` 转换脚本都已 gitignore（版权正文不入仓，只在本机）。
+  英文相关改动尚未在 Windows 真机编译与跑测试
 
 改代码前先看 `DEVELOPMENT_PLAN.md` §11「计划书修订记录」——2026-08-20 那轮校正了
 5 处事实错误与实现偏差（M2 不用 Viewbox、M2 验收样本换成申30:9-10 等）。

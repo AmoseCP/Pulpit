@@ -66,9 +66,9 @@ public sealed record AppConfig
         LyricsConfig lyrics = Section(Lyrics, "lyrics").Sanitize(notes);
         BadgeConfig badge = Section(Badge, "badge").Sanitize(notes);
 
-        // TextConfig 没有可夹的字段，但同样可能整节为 null——它的 NRE 会延迟到
-        // 直播中第一次投放时才爆，比启动崩溃更糟。
-        TextConfig text = Section(Text, "text");
+        // TextConfig 同样可能整节为 null——它的 NRE 会延迟到直播中第一次投放时才爆，
+        // 比启动崩溃更糟。补默认后再夹 englishCode。
+        TextConfig text = Section(Text, "text").Sanitize(notes);
 
         corrections = notes;
 
@@ -348,9 +348,28 @@ public sealed record LyricsConfig
     }
 }
 
-/// <summary>正文取清洗版还是原貌。</summary>
+/// <summary>正文取清洗版还是原貌，以及 F10 投哪个英文译本。</summary>
 public sealed record TextConfig
 {
     /// <summary>true 用 <c>text_raw</c>（含敬空与译注），默认 false 用 <c>text_display</c>。</summary>
     public bool UseRawText { get; init; }
+
+    /// <summary>
+    /// F10 英文投放用的译本 code（translations 表，如 <c>NIV2011</c> / <c>NIV1984</c>）。
+    /// 默认 NIV2011（P1-1 的默认英文译本）；库里没有这个 code 时回退任一已安装的
+    /// 英文译本，一个英文译本都没有时 F10 提示「未安装」。
+    /// 选取规则的唯一落点在 <c>TranslationSelector.SelectEnglish</c>。
+    /// </summary>
+    public string EnglishCode { get; init; } = "NIV2011";
+
+    internal TextConfig Sanitize(List<string> notes)
+    {
+        if (string.IsNullOrWhiteSpace(EnglishCode))
+        {
+            notes.Add("text.englishCode 为空，改用 NIV2011");
+            return this with { EnglishCode = "NIV2011" };
+        }
+
+        return this;
+    }
 }

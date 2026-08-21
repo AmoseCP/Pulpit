@@ -27,6 +27,7 @@ public sealed class ConfigTests
         Assert.Equal("#FFFFFFFF", config.Typography.Foreground);
         Assert.Equal(250, config.Animation.FadeMs);
         Assert.False(config.Text.UseRawText);
+        Assert.Equal("NIV2011", config.Text.EnglishCode);
 
         Assert.Equal("F9", config.Hotkeys.SendZh);
         Assert.Equal("F10", config.Hotkeys.SendEn);
@@ -42,6 +43,17 @@ public sealed class ConfigTests
 
         Assert.Empty(corrections);
         Assert.Equal(new AppConfig(), sanitized);
+    }
+
+    [Fact]
+    public void EmptyEnglishCodeFallsBackToDefault()
+    {
+        var config = new AppConfig { Text = new TextConfig { EnglishCode = "  " } };
+
+        AppConfig sanitized = config.Sanitize(out IReadOnlyList<string> corrections);
+
+        Assert.Equal("NIV2011", sanitized.Text.EnglishCode);
+        Assert.Contains(corrections, note => note.Contains("englishCode"));
     }
 
     // ---------------- 非法字段夹回默认，不抛异常（§7）----------------

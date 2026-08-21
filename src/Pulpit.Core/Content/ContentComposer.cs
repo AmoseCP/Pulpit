@@ -62,7 +62,13 @@ public sealed class ContentComposer
     /// <summary>经文查询是否可用。控制窗口据此显示告警。</summary>
     public bool ScriptureAvailable => _repository is not null && _parser is not null;
 
-    public ComposeResult Compose(string? input, bool useRawText = false)
+    /// <param name="input">操作员敲进输入框的原始字符串。</param>
+    /// <param name="useRawText">对应 <c>config.text.useRawText</c>。</param>
+    /// <param name="transId">
+    /// 要查的译本（P1-1）。默认 1（中文 CUV）；F10 英文投放传英文译本的 id。
+    /// 解析（书卷别名、章节校验）与译本无关，永远走共用的表。
+    /// </param>
+    public ComposeResult Compose(string? input, bool useRawText = false, int transId = 1)
     {
         string normalized = TextNormalizer.NormalizeInput(input);
 
@@ -109,11 +115,13 @@ public sealed class ContentComposer
                 return ComposeResult.Ok(ContentBuilder.FromFreeText(original));
             }
 
-            IReadOnlyList<VerseText> verses = _repository.Lookup(reference);
+            IReadOnlyList<VerseText> verses = _repository.Lookup(reference, transId);
 
             if (verses.Count == 0)
             {
-                // 解析通过、章节也在范围内，却查不到文本——库出了问题，不该静默上屏。
+                // 中文（trans_id=1）时解析通过、章节也在范围内却查不到文本 = 库出了问题；
+                // 英文译本则确实存在合法的空档（NIV 把 16 节归入脚注，如太 17:21），
+                // 两种情况都不该静默上屏，报错措辞由调用方按语境补充。
                 return ComposeResult.Failed(Decorate(segment, "该节在库中查不到文本", multiple));
             }
 

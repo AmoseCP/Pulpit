@@ -1,15 +1,15 @@
 # bible_cuv.db — 结构说明
 
 由「简体中文和合本」旧库重组而成，供投屏应用直接使用。
-6.99 MB，SQLite 3，UTF-8，无外部依赖。
+约 24 MB，SQLite 3，UTF-8，无外部依赖。
 
 ## 表
 
-### `verses` — 经文主表（31103 行）
+### `verses` — 经文主表（93275 行 = CUV 31103 + NIV1984 31086 + NIV2011 31086）
 
 | 列 | 说明 |
 |---|---|
-| `trans_id` | 译本 ID，当前恒为 1（CUV） |
+| `trans_id` | 译本 ID：1 = CUV（和合本简体），2 = NIV1984，3 = NIV2011（F10 默认）。应用按 `translations.code` 选英文译本（配置 `text.englishCode`，默认 NIV2011，缺席回退任一英文译本） |
 | `book_id` | 1–66，标准书卷序 |
 | `chapter` | 章 |
 | `verse` | 节 |
@@ -107,9 +107,36 @@ ORDER BY v.merge_head;
 SELECT book_id FROM book_aliases WHERE alias = ?;   -- 传入已归一化的字符串
 ```
 
+## 英文译本（NIV1984 = trans_id 2，NIV2011 = trans_id 3）
+
+由 `tools/build_niv_db.py` 写入（幂等可重跑）。**源文件与转换脚本都已 gitignore
+（版权正文不入仓），只存在于构建机本地**——脚本丢了按本节 + DEVELOPMENT_PLAN §11
+第 16 条的规则重写即可。两个源：
+
+* NIV 1984：Zefania XML（`New International Version (1984) (US).xml`）
+* NIV 2011：MyBible SQLite 模块（`NIV_en.SQLite3`，book_number 带间隙 10–730，
+  按升序映射标准 1–66 并与 `books.name_en` 逐卷核对）
+
+共同性质：
+
+* 书卷、别名、章节表与中文共用；NIV 无并节，`merge_head`/`merge_last` 恒等于 `verse`
+* NIV 归入脚注的 16 节（太 17:21、可 7:16、约 5:4、徒 8:37 等）**无行**，
+  查不到时按下面的回退约定提示（两版同位）
+* 与 `chapter_info`（按和合本建）有 3 处节数出入：约 7 章（NIV 有 53 节）、
+  约叁（NIV 14 节 vs CUV 15）、启 12 章（NIV 17 节 vs CUV 18）——允许，回退提示兜底
+* `meta` 每版三键：`niv1984_*` / `niv2011_*`（`built_at` / `verse_count` / `source`）
+
+清洗规则（Zefania，1984）：`text_raw` 保留 XML 原貌；`text_display` 做空白归一 +
+`--` → `—`；`[补词]` 方括号是 NIV 正文标记，保留。
+
+清洗规则（MyBible，2011）：正文带传输标记，`text_raw` 也须剥标记——
+`<f>[n]</f>` 脚注号整体删除；`<t>` `<J>` `<i>` `<e>` 及 `<pb/>` 去壳留字；
+`<n>` 内容整体为方括号者是抄本编注（全库仅 2 处：可 16:8、约 7:52），
+raw 保留、display 删除（对应 CUV 的译注处理），**其余 `<n>` 包的是真正文**
+（约 8:12-59 整段被模块包进 `<n>`，已核对），拆包保留。
+
 ## 后续
 
-* 加英文译本：往 `translations` 插一行（`id=2`），经文按同样结构写入 `verses`。
-  书卷、别名、章节表可共用；英文节号与中文偶有出入，取不到时回退提示即可。
+* 英文节号与中文偶有出入，取不到时回退提示即可（见上）。
 * 需要关键词搜索（「神爱世人」反查出处）再补 FTS5 外部内容表，
   目前按引用精确寻址不需要。
