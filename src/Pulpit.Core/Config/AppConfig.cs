@@ -99,8 +99,15 @@ public sealed record BandConfig
     /// </summary>
     public string VerticalAnchor { get; init; } = "bottom";
 
-    /// <summary>黑底不透明度。0 = 全透明（只剩白字），1 = 纯黑。</summary>
+    /// <summary>底色不透明度。0 = 全透明（只剩文字），1 = 完全不透明。</summary>
     public double BackgroundOpacity { get; init; } = 0.72;
+
+    /// <summary>
+    /// 底色色相（十六进制 RGB，如 <c>#000000</c>）。不透明度由
+    /// <see cref="BackgroundOpacity"/> 单独控制，本值的 alpha 位（若写了）会被忽略。
+    /// 解析发生在 App 层（Core 不引用 WPF），解析失败退回黑色并记日志。
+    /// </summary>
+    public string Background { get; init; } = "#000000";
 
     /// <summary>内边距占带高的比例。</summary>
     public double PaddingPercent { get; init; } = 0.06;
@@ -110,6 +117,13 @@ public sealed record BandConfig
         double height = Clamp(HeightPercent, 0.10, 1.00, 0.30, nameof(HeightPercent), notes);
         double opacity = Clamp(BackgroundOpacity, 0.0, 1.0, 0.72, nameof(BackgroundOpacity), notes);
         double padding = Clamp(PaddingPercent, 0.0, 0.30, 0.06, nameof(PaddingPercent), notes);
+
+        string background = Background;
+        if (string.IsNullOrWhiteSpace(background))
+        {
+            notes.Add("band.background 为空，改用 #000000");
+            background = "#000000";
+        }
 
         string anchor = VerticalAnchor;
         if (!string.Equals(anchor, "bottom", StringComparison.OrdinalIgnoreCase)
@@ -126,6 +140,7 @@ public sealed record BandConfig
             HeightPercent = height,
             VerticalAnchor = anchor.ToLowerInvariant(),
             BackgroundOpacity = opacity,
+            Background = background,
             PaddingPercent = padding,
         };
     }

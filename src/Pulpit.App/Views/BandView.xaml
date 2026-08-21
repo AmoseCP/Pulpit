@@ -1,0 +1,96 @@
+<UserControl x:Class="Pulpit.App.Views.BandView"
+             xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+             xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+             Focusable="False"
+             UseLayoutRounding="True"
+             SnapsToDevicePixels="True"
+             TextOptions.TextFormattingMode="Ideal"
+             TextOptions.TextRenderingMode="Grayscale">
+
+    <!--
+      带状区域本体：半透明底 + 正文 + 页脚。从 OverlayWindow 抽出来成为独立控件，
+      是为了让 ② 主屏预览能在**投放之前**用同一份结构渲染待投内容——
+      预览与副屏共用同一个类，结构上不可能漂移（与 VisualBrush 镜像同一个道理）。
+
+      字体、字号、颜色、内边距全部由 OverlayTheme 经 ApplyTheme 赋值（配置驱动），
+      XAML 里只留结构与中性默认值。
+    -->
+    <Border x:Name="BandBackground" Background="#B8000000">
+        <Grid x:Name="BandPadding">
+            <Grid.RowDefinitions>
+                <RowDefinition Height="*" />
+                <!--
+                  页脚行高由代码写成**固定值**（MaxFontSize × LabelScale × 1.6），
+                  不用 Auto。用 Auto 会形成循环：出处标签字号 = 正文字号的 40%，
+                  而正文字号又由「正文可用高度 = 总高 − 页脚高」二分算出来。
+                  固定预留把这个环打断，正文可用高度与字号无关。
+                -->
+                <RowDefinition x:Name="FooterRow" Height="0" />
+            </Grid.RowDefinitions>
+
+            <!-- 正文。BodyHost 的实际尺寸就是二分搜索的目标框。
+
+                 BodyStack（HorizontalAlignment=Center）+ 各块 TextAlignment=Left 是刻意的：
+                 堆叠的期望宽度收缩为最宽一行的宽度，整组随之水平居中，
+                 组内每一行共享同一条左缘——「整体居中、续行左对齐」。
+                 全部行都居中（TextAlignment=Center）会让多行正文两侧参差。
+
+                 中英对照（P1-2 后续）用四个块：英文正文 + 英文出处、中文正文 + 中文出处，
+                 每种语言的经文与出处各自成组，出处右对齐、字号缩小（LabelScale）。
+                 非对照内容只显示 BodyText，其余三块收起，退化为原有形态。 -->
+            <Grid x:Name="BodyHost" Grid.Row="0" ClipToBounds="True">
+                <!-- 经文块（Center + 无显式宽）＝整块居中、续行共享左缘；
+                     出处块（Stretch + TextAlignment=Right）＝贴到带子内容区的**绝对右缘**，
+                     与单段落页脚出处同一条右线——经文再短，出处也不会跟着跑到左边。 -->
+                <StackPanel x:Name="BodyStack"
+                            HorizontalAlignment="Stretch"
+                            VerticalAlignment="Center">
+                    <TextBlock x:Name="SecondaryText"
+                               Visibility="Collapsed"
+                               Foreground="White"
+                               TextWrapping="Wrap"
+                               TextAlignment="Left"
+                               HorizontalAlignment="Center"
+                               LineStackingStrategy="BlockLineHeight" />
+                    <TextBlock x:Name="SecondaryLabelText"
+                               Visibility="Collapsed"
+                               Foreground="White"
+                               Opacity="0.9"
+                               TextWrapping="Wrap"
+                               TextAlignment="Right"
+                               HorizontalAlignment="Stretch"
+                               LineStackingStrategy="BlockLineHeight" />
+                    <TextBlock x:Name="BodyText"
+                               Foreground="White"
+                               TextWrapping="Wrap"
+                               TextAlignment="Left"
+                               HorizontalAlignment="Center"
+                               LineStackingStrategy="BlockLineHeight" />
+                    <TextBlock x:Name="BodyLabelText"
+                               Visibility="Collapsed"
+                               Foreground="White"
+                               Opacity="0.9"
+                               TextWrapping="Wrap"
+                               TextAlignment="Right"
+                               HorizontalAlignment="Stretch"
+                               LineStackingStrategy="BlockLineHeight" />
+                </StackPanel>
+            </Grid>
+
+            <!-- 页脚：页码指示器靠左，出处标签靠右（M2：出处与正文分离） -->
+            <Grid Grid.Row="1">
+                <TextBlock x:Name="IndicatorText"
+                           Foreground="White"
+                           Opacity="0.75"
+                           HorizontalAlignment="Left"
+                           VerticalAlignment="Bottom" />
+                <TextBlock x:Name="LabelText"
+                           Foreground="White"
+                           Opacity="0.9"
+                           HorizontalAlignment="Right"
+                           VerticalAlignment="Bottom" />
+            </Grid>
+
+        </Grid>
+    </Border>
+</UserControl>

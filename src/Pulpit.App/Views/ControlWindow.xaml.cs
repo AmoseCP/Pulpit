@@ -70,6 +70,12 @@ public partial class ControlWindow : Window
     private string? _lastSentInput;
 
     /// <summary>
+    /// 输入框当前解析出的待投内容（<see cref="RefreshMode"/> 的副产品）。
+    /// ② 预览据此在**投放之前**渲染效果；null = 无可投内容（空输入/解析报错/组合中）。
+    /// </summary>
+    private DisplayContent? _pendingContent;
+
+    /// <summary>
     /// 初始化外观控件时抑制回调，否则一赋值就当成操作员改动。
     /// 初值必须为 <c>true</c>：XAML 解析阶段（InitializeComponent 内部）给 Slider 设
     /// Min/Max/Value 就会触发 ValueChanged，那一刻声明得比它晚的控件还是 null——
@@ -118,6 +124,11 @@ public partial class ControlWindow : Window
         LoadTranslationControls();
         RefreshHistory();
         LoadAppearanceControls();
+
+        // ② 预览的「待投放」层与副屏共用 BandView（同一份渲染代码，不可能漂移）；
+        // 正文放不下的告警只让副屏那份记，预览再记一遍是噪音。
+        PendingBand.LogOverflow = false;
+        PendingBand.ApplyTheme(OverlayTheme.From(_config, out _));
 
         AttachPreview();
         AttachImeTracking();
@@ -671,6 +682,7 @@ public partial class ControlWindow : Window
 
         EnglishSettingsChanged?.Invoke(this, EventArgs.Empty);
         RefreshStatusBar();
+        RefreshMode();   // 待投放预览的英文行要跟着换版本
 
         if (_activeTransId != 1)
         {
@@ -695,6 +707,7 @@ public partial class ControlWindow : Window
         AppLog.Info($"中英对照{(_bilingual ? "开启（英上中下）" : "关闭")}。");
 
         EnglishSettingsChanged?.Invoke(this, EventArgs.Empty);
+        RefreshMode();   // 待投放预览要跟着切换对照形态
 
         if (_activeTransId == 1)
         {
@@ -773,10 +786,17 @@ public partial class ControlWindow : Window
     /// </remarks>
     private void RefreshMode()
     {
+        RefreshModeCore();
+        RefreshPendingPreview();
+    }
+
+    private void RefreshModeCore()
+    {
         string input = InputBox.Text;
 
-        // 默认收起输入预览,只有解析成经文的分支会重新打开——
-        // 自由文本的预览就是输入框本身,再显示一遍是噪音。
+        // 默认无待投内容、收起输入预览,只有解析出内容的分支会重新赋值——
+        // 自由文本的文字预览就是输入框本身,再显示一遍是噪音。
+        _pendingContent = null;
         InputPreviewPanel.Visibility = Visibility.Collapsed;
 
         if (IsComposing)
@@ -798,7 +818,8 @@ public partial class ControlWindow : Window
             return;
         }
 
-        ComposeResult result = _composer.Compose(input, _useRawText);
+        // 与 F9 完全同一条合成路径（含中英对照）——预览里是什么，按 F9 就上什么。
+        ComposeResult result = ComposePrimary(input);
 
         if (result.HasError)
         {
@@ -813,6 +834,7 @@ public partial class ControlWindow : Window
         }
 
         DisplayContent content = result.Content!;
+        _pendingContent = content;
 
         if (content.Kind == ContentKind.FreeText)
         {
@@ -833,8 +855,66 @@ public partial class ControlWindow : Window
         InputPreviewLabel.Text = content.HasMultiplePages
             ? $"{first.Label}（第 1/{content.PageCount} 页，投放后 F7/F8 翻页）"
             : first.Label;
-        InputPreviewText.Text = first.Body;
+        // 对照页把英文段落一并列出（渲染版预览在 ② 里，这里是纯文字核对用）。
+        InputPreviewText.Text = first.SecondaryBody.Length > 0
+            ? first.SecondaryBody + "\n" + first.Body
+            : first.Body;
         InputPreviewPanel.Visibility = Visibility.Visible;
+    }
+
+    // ================= ② 预览的「待投放」层 =================
+
+    /// <summary>
+    /// 输入解析出内容、且与副屏正显示的不是同一份输入时，用 BandView 按副屏尺寸
+    /// 渲染第一页盖在实况镜像上——投放之前就能看到效果；否则回到实况镜像
+    /// （投放后翻页、清屏都以实况为准）。
+    /// </summary>
+    private void RefreshPendingPreview()
+    {
+        bool sameAsLive = _overlay.IsContentVisible
+            && _lastSentInput is not null
+            && string.Equals(InputBox.Text, _lastSentInput, StringComparison.Ordinal);
+
+        bool showPending = _pendingContent is not null && !sameAsLive;
+
+        if (showPending)
+        {
+            SyncPendingBandSize();
+            PendingBand.Render(_pendingContent!.Pages[0], _pendingContent.PageIndicator);
+        }
+
+        PendingPreviewBox.Visibility = showPending ? Visibility.Visible : Visibility.Collapsed;
+
+        PreviewEmptyHint.Visibility = !showPending && !_overlay.IsContentVisible
+            ? Visibility.Visible
+            : Visibility.Collapsed;
+
+        PreviewStateText.Text = showPending
+            ? "待投放（F9 上屏）"
+            : _overlay.IsContentVisible ? "副屏实况" : string.Empty;
+    }
+
+    /// <summary>
+    /// 把待投放渲染面的尺寸同步成副屏带子的 DIP 尺寸——尺寸一致换行点才一致，
+    /// 预览里的分行就是副屏上的分行。副屏尚未定位时保留 XAML 里的回退尺寸。
+    /// </summary>
+    private void SyncPendingBandSize()
+    {
+        Size band = _overlay.BandDipSize;
+
+        if (band.Width > 50 && band.Height > 20)
+        {
+            PendingHost.Width = band.Width;
+            PendingHost.Height = band.Height;
+        }
+    }
+
+    /// <summary>外观改动后把当前配置重新套到待投放预览的带子上。</summary>
+    private void ApplyPendingTheme()
+    {
+        // 颜色/字体解析的告警由副屏那份 ApplyConfig 记日志，这里丢弃同一批说明。
+        PendingBand.ApplyTheme(OverlayTheme.From(_config, out _));
+        RefreshPendingPreview();
     }
 
     // ================= 关于与更新（⑨）=================
@@ -927,6 +1007,8 @@ public partial class ControlWindow : Window
             AnchorBottom.IsChecked = !top && !center && !full;
 
             LoadFontList();
+            LoadColorList(FontColorList, FontColorPresets, _config.Typography.Foreground);
+            LoadColorList(BandColorList, BandColorPresets, _config.Band.Background);
 
             BadgeEnabled.IsChecked = _config.Badge.Enabled;
             BadgeTextBox.Text = _config.Badge.Text;
@@ -965,6 +1047,125 @@ public partial class ControlWindow : Window
 
         FontList.SelectedItem = _config.Typography.FontFamily;
     }
+
+    // ================= 颜色下拉 =================
+
+    /// <summary>字体颜色预设。第一项是默认值。浅色系配深底、深色系配浅底。</summary>
+    private static readonly (string Name, string Hex)[] FontColorPresets =
+    [
+        ("白色", "#FFFFFF"),
+        ("米白", "#F8F4E8"),
+        ("淡黄", "#FFEE99"),
+        ("亮黄", "#FFD43B"),
+        ("橙色", "#FFA94D"),
+        ("红色", "#FF5252"),
+        ("粉色", "#FAA2C1"),
+        ("浅绿", "#8CE99A"),
+        ("青色", "#66D9E8"),
+        ("浅蓝", "#A5D8FF"),
+        ("蓝色", "#4DABF7"),
+        ("紫色", "#B197FC"),
+        ("灰色", "#ADB5BD"),
+        ("深红", "#C92A2A"),
+        ("深蓝字", "#1864AB"),
+        ("黑色", "#111111"),
+    ];
+
+    /// <summary>背景颜色预设（色相；透明程度归「底色不透明度」滑块管）。第一项是默认值。</summary>
+    private static readonly (string Name, string Hex)[] BandColorPresets =
+    [
+        ("黑色", "#000000"),
+        ("深灰", "#212529"),
+        ("深蓝", "#10233F"),
+        ("蓝色", "#1971C2"),
+        ("深绿", "#0F2E1D"),
+        ("绿色", "#2B8A3E"),
+        ("深红", "#4A0E0E"),
+        ("红色", "#A61E1E"),
+        ("深紫", "#26193F"),
+        ("紫色", "#6741D9"),
+        ("深棕", "#2B1B10"),
+        ("灰色", "#868E96"),
+        ("米色", "#F2EBDC"),
+        ("白色", "#FFFFFF"),
+    ];
+
+    /// <summary>
+    /// 重建颜色下拉并按当前配置选中。配置里手改的自定义色与预设都对不上时，
+    /// 插一条「自定义」列出来——否则一打开面板选中项就被悄悄换成预设色
+    /// （与字体下拉列出未安装字体是同一个道理）。
+    /// </summary>
+    private void LoadColorList(ComboBox box, (string Name, string Hex)[] presets, string configured)
+    {
+        box.Items.Clear();
+
+        Color? current = TryParseColor(configured);
+        bool matched = false;
+
+        foreach ((string name, string hex) in presets)
+        {
+            var item = MakeColorItem(name, hex);
+            box.Items.Add(item);
+
+            // 只比 RGB：foreground 的默认值带 alpha 位（#FFFFFFFF），预设不带，
+            // 但它们是同一个颜色；alpha 对带子来说本来就归不透明度滑块管。
+            if (!matched && current is Color c && TryParseColor(hex) is Color p
+                && p.R == c.R && p.G == c.G && p.B == c.B)
+            {
+                box.SelectedItem = item;
+                matched = true;
+            }
+        }
+
+        if (!matched)
+        {
+            var custom = MakeColorItem($"自定义 {configured}", configured);
+            box.Items.Insert(0, custom);
+            box.SelectedItem = custom;
+        }
+    }
+
+    /// <summary>下拉里的一行：色块 + 名称，Tag 存要写回配置的十六进制值。</summary>
+    private static ComboBoxItem MakeColorItem(string name, string hex)
+    {
+        var swatch = new System.Windows.Shapes.Rectangle
+        {
+            Width = 14,
+            Height = 14,
+            StrokeThickness = 1,
+            Stroke = new SolidColorBrush(Color.FromRgb(0x80, 0x80, 0x80)),
+            Fill = TryParseColor(hex) is Color c
+                ? new SolidColorBrush(c)
+                : System.Windows.Media.Brushes.Transparent,
+            VerticalAlignment = VerticalAlignment.Center,
+        };
+
+        var panel = new StackPanel { Orientation = System.Windows.Controls.Orientation.Horizontal };
+        panel.Children.Add(swatch);
+        panel.Children.Add(new TextBlock { Text = name, Margin = new Thickness(6, 0, 0, 0) });
+
+        return new ComboBoxItem { Content = panel, Tag = hex };
+    }
+
+    private static Color? TryParseColor(string value)
+    {
+        try
+        {
+            return ColorConverter.ConvertFromString(value) is Color color ? color : null;
+        }
+        catch (Exception ex) when (ex is FormatException or NotSupportedException or ArgumentException)
+        {
+            return null;
+        }
+    }
+
+    private static string SelectedColorTag(ComboBox box, string fallback) =>
+        box.SelectedItem is ComboBoxItem { Tag: string hex } ? hex : fallback;
+
+    /// <summary>与字体下拉同理：精确签名的处理器，不靠委托逆变。</summary>
+    private void OnFontColorChanged(object sender, SelectionChangedEventArgs e) => ApplyAppearance();
+
+    private void OnBandColorChanged(object sender, SelectionChangedEventArgs e) => ApplyAppearance();
 
     private void SelectBadgeCorner(string corner)
     {
@@ -1036,6 +1237,7 @@ public partial class ControlWindow : Window
             {
                 HeightPercent = HeightSlider.Value,
                 BackgroundOpacity = OpacitySlider.Value,
+                Background = SelectedColorTag(BandColorList, _config.Band.Background),
                 VerticalAnchor = AnchorTop.IsChecked == true ? "top"
                     : AnchorCenter.IsChecked == true ? "center"
                     : AnchorFull.IsChecked == true ? "fullscreen"
@@ -1045,6 +1247,7 @@ public partial class ControlWindow : Window
             {
                 MaxFontSize = MaxFontSlider.Value,
                 FontFamily = fontFamily,
+                Foreground = SelectedColorTag(FontColorList, _config.Typography.Foreground),
             },
             Animation = _config.Animation with
             {
@@ -1068,6 +1271,7 @@ public partial class ControlWindow : Window
         }
 
         AppearanceChanged?.Invoke(this, _config);
+        ApplyPendingTheme();
 
         AppearanceHint.Text = "已实时应用；点「保存为默认」才会记住";
     }
@@ -1097,6 +1301,7 @@ public partial class ControlWindow : Window
         LoadAppearanceControls();
 
         AppearanceChanged?.Invoke(this, _config);
+        ApplyPendingTheme();
 
         AppearanceHint.Text = "已恢复出厂设置；点「保存为默认」才会记住";
         AppLog.Info("外观设置已恢复出厂值。");
@@ -1249,10 +1454,8 @@ public partial class ControlWindow : Window
 
     private void OnOverlayContentChanged(object? sender, EventArgs e)
     {
-        PreviewEmptyHint.Visibility = _overlay.IsContentVisible
-            ? Visibility.Collapsed
-            : Visibility.Visible;
-
+        // 副屏内容变了（投放/清屏/翻页），待投放层要重新判断该让位还是继续盖着。
+        RefreshPendingPreview();
         RefreshStatusBar();
     }
 
@@ -1280,10 +1483,6 @@ public partial class ControlWindow : Window
     private void RefreshDiagnostics()
     {
         RefreshStatusBar();
-
-        PreviewEmptyHint.Visibility = _overlay.IsContentVisible
-            ? Visibility.Collapsed
-            : Visibility.Visible;
 
         bool stylesOk = _overlay.VerifyWindowStyles(out string styleReport);
         StyleReport.Text = (stylesOk ? "扩展样式 正常  " : "扩展样式 异常  ") + styleReport;

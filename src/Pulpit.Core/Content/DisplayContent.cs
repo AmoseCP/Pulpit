@@ -16,8 +16,20 @@ public enum ContentKind
     Lyrics,
 }
 
-/// <summary>副屏上的一页。<c>Label</c> 为空表示无出处标签（自由文本）。</summary>
-public sealed record Page(string Label, string Body);
+/// <summary>
+/// 副屏上的一页。<c>Label</c> 为空表示无出处标签（自由文本）。
+/// </summary>
+/// <remarks>
+/// <para><c>SecondaryBody</c>/<c>SecondaryLabel</c> 是中英对照的第二段落（英文），
+/// 显示在主段落**上方**、带自己的出处——对照页每种语言的经文与出处各自成组。
+/// 非对照内容两者为空串，渲染层据 <c>SecondaryBody</c> 是否为空选布局：
+/// 空 → 单段落 + 页脚出处（原有形态）；非空 → 双段落、出处各随其文右对齐。</para>
+/// </remarks>
+public sealed record Page(
+    string Label,
+    string Body,
+    string SecondaryBody = "",
+    string SecondaryLabel = "");
 
 /// <summary>
 /// 一次投放的全部内容与当前页位置。

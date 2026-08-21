@@ -123,8 +123,11 @@ public static class ContentBuilder
     }
 
     /// <summary>
-    /// 中英对照（英上中下）：分页、出处标签、页序全部沿用中文——一个并节组一页，
-    /// 每页正文是「该组的英文（可能多节，空格连接）+ 换行 + 该组的中文」。
+    /// 中英对照（英上中下）：分页与页序沿用中文——一个并节组一页。
+    /// 每页两个段落各自成组：英文经文（<see cref="Page.SecondaryBody"/>）配英文出处
+    /// （<see cref="Page.SecondaryLabel"/>）在上，中文经文（<see cref="Page.Body"/>）
+    /// 配中文出处（<see cref="Page.Label"/>）在下；出处不加括号，渲染层各随其文右对齐。
+    /// 该页英文缺失时退化为与纯中文投放完全一致的单段落页。
     /// </summary>
     /// <remarks>
     /// <para><b>为什么按中文分页而不是英文</b>：中文是现场的主语言，并节组是它的
@@ -152,11 +155,35 @@ public static class ContentBuilder
             foreach (VerseText verse in pair.Primary.Verses)
             {
                 string chinese = useRawText ? verse.TextRaw : verse.TextDisplay;
-                string english = JoinEnglish(pair.English, verse.MergeHead, verse.MergeLast, useRawText);
+                IReadOnlyList<VerseText> english =
+                    EnglishInRange(pair.English, verse.MergeHead, verse.MergeLast);
+
+                if (english.Count == 0)
+                {
+                    // 英文空档（NIV 归脚注的节）：该页只出中文，出处也只有中文。
+                    pages.Add(new Page(Label: verse.Label, Body: chinese));
+                    continue;
+                }
+
+                var texts = new List<string>(english.Count);
+                foreach (VerseText en in english)
+                {
+                    texts.Add(useRawText ? en.TextRaw : en.TextDisplay);
+                }
+
+                // 英文出处按该页实际并入的英文节算范围——它就是英文行真正覆盖的节，
+                // 与中文并节组范围一致。
+                VerseText enFirst = english[0];
+                VerseText enLast = english[^1];
+                string englishLabel = enFirst.MergeHead == enLast.MergeLast
+                    ? enFirst.Label
+                    : $"{enFirst.BookName} {enFirst.Chapter}:{enFirst.MergeHead}-{enLast.MergeLast}";
 
                 pages.Add(new Page(
                     Label: verse.Label,
-                    Body: english.Length == 0 ? chinese : english + "\n" + chinese));
+                    Body: chinese,
+                    SecondaryBody: string.Join(' ', texts),
+                    SecondaryLabel: englishLabel));
             }
         }
 
@@ -172,23 +199,23 @@ public static class ContentBuilder
 
     /// <summary>
     /// 取出落在中文并节组 [<paramref name="mergeHead"/>, <paramref name="mergeLast"/>]
-    /// 范围内的英文经文，按节序空格连接。范围判交而不是判等：万一英文库也有并节，
+    /// 范围内的英文经文，按节序。范围判交而不是判等：万一英文库也有并节，
     /// 只要与该组有交集就归入这一页。
     /// </summary>
-    private static string JoinEnglish(
-        IReadOnlyList<VerseText> english, int mergeHead, int mergeLast, bool useRawText)
+    private static IReadOnlyList<VerseText> EnglishInRange(
+        IReadOnlyList<VerseText> english, int mergeHead, int mergeLast)
     {
-        var parts = new List<string>();
+        var subset = new List<VerseText>();
 
         foreach (VerseText verse in english)
         {
             if (verse.MergeHead <= mergeLast && verse.MergeLast >= mergeHead)
             {
-                parts.Add(useRawText ? verse.TextRaw : verse.TextDisplay);
+                subset.Add(verse);
             }
         }
 
-        return string.Join(' ', parts);
+        return subset;
     }
 
     /// <summary>

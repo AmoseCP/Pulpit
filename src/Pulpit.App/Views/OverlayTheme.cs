@@ -87,9 +87,11 @@ internal sealed class OverlayTheme
         FontWeight weight = ParseFontWeight(t.FontWeight, messages);
         Brush foreground = ParseBrush(t.Foreground, Colors.White, "typography.foreground", messages);
 
-        // 半透明黑底：不透明度直接进 alpha 通道。
-        var background = new SolidColorBrush(
-            Color.FromArgb((byte)Math.Round(b.BackgroundOpacity * 255), 0, 0, 0));
+        // 底色色相可配（band.background，默认黑），不透明度直接进 alpha 通道——
+        // 配置里写的 alpha 位（若有）被覆盖，透明程度只听 backgroundOpacity 的。
+        Color bandColor = ParseColor(b.Background, Colors.Black, "band.background", messages);
+        var background = new SolidColorBrush(Color.FromArgb(
+            (byte)Math.Round(b.BackgroundOpacity * 255), bandColor.R, bandColor.G, bandColor.B));
 
         // 冻结能省掉每帧的可变性检查——分层窗口是软件渲染，这点开销值得省。
         foreground.Freeze();
@@ -133,13 +135,16 @@ internal sealed class OverlayTheme
     }
 
     private static Brush ParseBrush(string value, Color fallback, string field, List<string> notes)
+        => new SolidColorBrush(ParseColor(value, fallback, field, notes));
+
+    private static Color ParseColor(string value, Color fallback, string field, List<string> notes)
     {
         try
         {
             object? parsed = ColorConverter.ConvertFromString(value);
             if (parsed is Color color)
             {
-                return new SolidColorBrush(color);
+                return color;
             }
         }
         catch (Exception ex) when (ex is FormatException or NotSupportedException or ArgumentException)
@@ -147,7 +152,7 @@ internal sealed class OverlayTheme
             // 落到下面的默认值。
         }
 
-        notes.Add($"{field}「{value}」无法解析，改用 #FFFFFFFF");
-        return new SolidColorBrush(fallback);
+        notes.Add($"{field}「{value}」无法解析，改用默认色 {fallback}");
+        return fallback;
     }
 }

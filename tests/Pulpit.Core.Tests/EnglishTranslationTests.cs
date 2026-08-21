@@ -179,21 +179,22 @@ public sealed class BilingualComposeTests
     }
 
     [Fact]
-    public void EnglishOnTopChineseBelowSeparatedByNewline()
+    public void EnglishAndChineseSectionsEachCarryTheirOwnLabel()
     {
         ComposeResult result = _composer.ComposeBilingual("约3:16", useRawText: false, _english.Id);
 
         Assert.True(result.HasContent);
         Page page = Assert.Single(result.Content!.Pages);
 
-        // 标签与出处按中文走——现场主语言是中文，操作员核对的也是中文出处。
+        // 每种语言的经文与出处各自成组：英文段落（Secondary*）在上、中文（Body/Label）在下；
+        // 出处不加括号、不并进正文。控制窗口的 SourceLabels 仍按中文走。
+        Assert.StartsWith("For God so loved the world", page.SecondaryBody);
+        Assert.Equal("John 3:16", page.SecondaryLabel);
+        Assert.Contains("神爱世人", page.Body);
         Assert.Equal("约翰福音 3:16", page.Label);
+        Assert.DoesNotContain("3:16", page.Body);
+        Assert.DoesNotContain("3:16", page.SecondaryBody);
         Assert.Equal(["约翰福音 3:16"], result.Content.SourceLabels);
-
-        string[] halves = page.Body.Split('\n');
-        Assert.Equal(2, halves.Length);
-        Assert.StartsWith("For God so loved the world", halves[0]);
-        Assert.Contains("神爱世人", halves[1]);
     }
 
     [Fact]
@@ -203,19 +204,21 @@ public sealed class BilingualComposeTests
         ComposeResult result = _composer.ComposeBilingual("诗8:6", useRawText: false, _english.Id);
 
         Page page = Assert.Single(result.Content!.Pages);
+
+        // 英文出处的范围按该页实际并入的英文节算——与中文并节组一致（6-8）。
+        Assert.Equal("Psalms 8:6-8", page.SecondaryLabel);
         Assert.Equal("诗篇 8:6-8", page.Label);
 
-        string english = page.Body.Split('\n')[0];
         IReadOnlyList<VerseText> verses = _fx.Repository.Lookup(new VerseRef(19, 8, 6, 8), _english.Id);
         Assert.Equal(3, verses.Count);
-        Assert.All(verses, v => Assert.Contains(v.TextDisplay, english));
+        Assert.All(verses, v => Assert.Contains(v.TextDisplay, page.SecondaryBody));
     }
 
     [Fact]
     public void EnglishGapFallsBackToChineseOnlyInsteadOfFailing()
     {
         // NIV 把太 17:21 归入脚注。纯英文投放报错（见上），但对照模式的主语言
-        // 是中文——缺一行英文不该把整次投放拦下来，该页只出中文。
+        // 是中文——缺一行英文不该把整次投放拦下来，该页退化为与纯中文完全一致。
         ComposeResult bilingual = _composer.ComposeBilingual("太17:21", useRawText: false, _english.Id);
         ComposeResult chinese = _composer.Compose("太17:21");
 
@@ -233,7 +236,11 @@ public sealed class BilingualComposeTests
         Assert.True(result.HasContent);
         Assert.Equal(2, result.Content!.PageCount);
         Assert.Equal(2, result.Content.Sources.Count);
-        Assert.All(result.Content.Pages, p => Assert.Contains('\n', p.Body));
+        Assert.All(result.Content.Pages, p =>
+        {
+            Assert.NotEqual(string.Empty, p.SecondaryBody);
+            Assert.NotEqual(string.Empty, p.SecondaryLabel);
+        });
     }
 
     [Fact]

@@ -1,6 +1,7 @@
 <Window x:Class="Pulpit.App.Views.ControlWindow"
         xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
         xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+        xmlns:views="clr-namespace:Pulpit.App.Views"
         Title="Pulpit — 控制台"
         Width="780" Height="720"
         MinWidth="660" MinHeight="600"
@@ -144,19 +145,36 @@
                     </Grid>
                 </GroupBox>
 
-                <!-- ② 预览：所见即副屏 -->
-                <GroupBox Grid.Row="2" Header="② 主屏预览（所见即副屏）">
+                <!-- ② 预览：输入即预览，投放后即副屏实况 -->
+                <GroupBox Grid.Row="2" Header="② 主屏预览（输入即预览，投放后即副屏实况）">
                     <Border Background="#FF101010" BorderBrush="#FF808080" BorderThickness="1"
                             Height="180" ClipToBounds="True">
                         <Grid>
-                            <!-- VisualBrush 直接镜像叠加层的可视根：不是「照着重画一遍」，
+                            <!-- 副屏实况：VisualBrush 直接镜像叠加层的可视根——不是「照着重画一遍」，
                                  而是同一份渲染结果，所以永远不会与副屏发生样式漂移。 -->
                             <Rectangle x:Name="PreviewSurface" />
+
+                            <!-- 待投放预览：输入解析出内容且与屏上不同时盖在实况之上。
+                                 PendingHost 的尺寸在代码里同步成副屏带子的 DIP 尺寸
+                                 （尺寸一致换行点才一致），再由 Viewbox 等比缩进预览框——
+                                 渲染用的是与副屏同一个 BandView，同样不可能漂移。 -->
+                            <Viewbox x:Name="PendingPreviewBox" Visibility="Collapsed"
+                                     Stretch="Uniform">
+                                <Grid x:Name="PendingHost" Width="1600" Height="288">
+                                    <views:BandView x:Name="PendingBand" />
+                                </Grid>
+                            </Viewbox>
 
                             <TextBlock x:Name="PreviewEmptyHint"
                                        Text="副屏当前为空"
                                        Foreground="#FF707070" FontSize="14"
                                        HorizontalAlignment="Center" VerticalAlignment="Center" />
+
+                            <!-- 现在预览框里是什么：待投放 / 副屏实况 -->
+                            <TextBlock x:Name="PreviewStateText"
+                                       Foreground="#FFB0B0B0" FontSize="12"
+                                       HorizontalAlignment="Left" VerticalAlignment="Top"
+                                       Margin="6,4,0,0" />
                         </Grid>
                     </Border>
                 </GroupBox>
@@ -306,6 +324,7 @@
                             <RowDefinition Height="Auto" />
                             <RowDefinition Height="Auto" />
                             <RowDefinition Height="Auto" />
+                            <RowDefinition Height="Auto" />
                         </Grid.RowDefinitions>
 
                         <TextBlock Grid.Row="0" Grid.Column="0" Text="字号上限" VerticalAlignment="Center" Margin="0,0,10,6" />
@@ -360,13 +379,31 @@
                                   MaxDropDownHeight="220"
                                   SelectionChanged="OnFontChanged" />
 
+                        <!-- 颜色预设在代码里灌（LoadColorList）：色块 + 名称，
+                             配置里手改的自定义色也会列出来，与字体下拉同一个道理。 -->
+                        <TextBlock Grid.Row="6" Grid.Column="0" Text="颜色" VerticalAlignment="Center" Margin="0,0,10,10" />
+                        <StackPanel Grid.Row="6" Grid.Column="1" Grid.ColumnSpan="2"
+                                    Orientation="Horizontal" Margin="0,0,0,10">
+                            <TextBlock Text="字体" VerticalAlignment="Center" Margin="0,0,6,0" />
+                            <ComboBox x:Name="FontColorList" Width="120" Height="26"
+                                      VerticalContentAlignment="Center"
+                                      MaxDropDownHeight="280"
+                                      SelectionChanged="OnFontColorChanged" />
+                            <TextBlock Text="背景" VerticalAlignment="Center" Margin="16,0,6,0" />
+                            <ComboBox x:Name="BandColorList" Width="120" Height="26"
+                                      VerticalContentAlignment="Center"
+                                      MaxDropDownHeight="280"
+                                      SelectionChanged="OnBandColorChanged"
+                                      ToolTip="背景的透明程度仍由「底色不透明度」滑块控制。" />
+                        </StackPanel>
+
                         <!-- 副屏角标（P2-4）。放在外观里是因为它同样是「彩排时设一次，
                              现场不动」的东西；它是另一个窗口，与正文带子互不影响。 -->
-                        <Separator Grid.Row="6" Grid.ColumnSpan="3" Margin="0,4,0,10" />
+                        <Separator Grid.Row="7" Grid.ColumnSpan="3" Margin="0,4,0,10" />
 
-                        <TextBlock Grid.Row="7" Grid.Column="0" Text="副屏角标" VerticalAlignment="Center"
+                        <TextBlock Grid.Row="8" Grid.Column="0" Text="副屏角标" VerticalAlignment="Center"
                                    Margin="0,0,10,6" />
-                        <StackPanel Grid.Row="7" Grid.Column="1" Grid.ColumnSpan="2"
+                        <StackPanel Grid.Row="8" Grid.Column="1" Grid.ColumnSpan="2"
                                     Orientation="Horizontal" Margin="0,0,0,6">
                             <CheckBox x:Name="BadgeEnabled" Content="常驻显示" Click="OnAppearanceToggled"
                                       VerticalAlignment="Center" Margin="0,0,16,0" />
@@ -380,14 +417,14 @@
                             </ComboBox>
                         </StackPanel>
 
-                        <TextBlock Grid.Row="8" Grid.Column="0" Text="角标文字" VerticalAlignment="Center"
+                        <TextBlock Grid.Row="9" Grid.Column="0" Text="角标文字" VerticalAlignment="Center"
                                    Margin="0,0,10,10" />
-                        <TextBox x:Name="BadgeTextBox" Grid.Row="8" Grid.Column="1" Grid.ColumnSpan="2"
+                        <TextBox x:Name="BadgeTextBox" Grid.Row="9" Grid.Column="1" Grid.ColumnSpan="2"
                                  Height="26" VerticalContentAlignment="Center" Margin="0,0,0,10"
                                  AcceptsReturn="False" MaxLength="40"
                                  TextChanged="OnBadgeTextChanged" />
 
-                        <StackPanel Grid.Row="9" Grid.Column="0" Grid.ColumnSpan="3" Orientation="Horizontal">
+                        <StackPanel Grid.Row="10" Grid.Column="0" Grid.ColumnSpan="3" Orientation="Horizontal">
                             <Button Content="保存为默认" Click="OnSaveAppearance" MinWidth="110" />
                             <Button Content="恢复出厂设置" Click="OnResetAppearance" MinWidth="110" />
                             <TextBlock x:Name="AppearanceHint" VerticalAlignment="Center"

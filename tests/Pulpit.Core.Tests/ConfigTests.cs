@@ -19,6 +19,7 @@ public sealed class ConfigTests
         Assert.Equal(0.30, config.Band.HeightPercent);
         Assert.Equal("bottom", config.Band.VerticalAnchor);
         Assert.Equal(0.72, config.Band.BackgroundOpacity);
+        Assert.Equal("#000000", config.Band.Background);
         Assert.Equal(0.06, config.Band.PaddingPercent);
         Assert.Equal("Microsoft YaHei UI", config.Typography.FontFamily);
         Assert.Equal("SemiBold", config.Typography.FontWeight);
@@ -44,6 +45,17 @@ public sealed class ConfigTests
 
         Assert.Empty(corrections);
         Assert.Equal(new AppConfig(), sanitized);
+    }
+
+    [Fact]
+    public void EmptyBandBackgroundFallsBackToBlack()
+    {
+        var config = new AppConfig { Band = new BandConfig { Background = " " } };
+
+        AppConfig sanitized = config.Sanitize(out IReadOnlyList<string> corrections);
+
+        Assert.Equal("#000000", sanitized.Band.Background);
+        Assert.Contains(corrections, note => note.Contains("band.background"));
     }
 
     [Fact]
