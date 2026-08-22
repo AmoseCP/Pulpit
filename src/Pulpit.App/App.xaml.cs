@@ -198,6 +198,9 @@ public partial class App : System.Windows.Application
         if (_control is not null)
         {
             _control.HotkeyStatus = result.StatusText;
+
+            // 清屏可能降级到 F11（F12 被系统占用的机器），按钮文字要显示真实键位。
+            _control.SetClearKeyDisplay(result.ClearKey);
         }
 
         if (!result.AllSucceeded)

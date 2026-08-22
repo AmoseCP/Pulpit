@@ -27,19 +27,32 @@ public enum HotkeyAction
 }
 
 /// <summary>一次注册的结果。</summary>
+/// <param name="ClearKey">清屏实际注册上的键（可能是降级后的 F11）；null = 清屏无热键。</param>
+/// <param name="ClearFellBack">清屏是否发生了降级（配置键失败、备用键成功）。</param>
 public sealed record HotkeyRegistrationResult(
     IReadOnlyList<string> Registered,
-    IReadOnlyList<string> Failed)
+    IReadOnlyList<string> Failed,
+    string? ClearKey,
+    bool ClearFellBack)
 {
     public bool AllSucceeded => Failed.Count == 0;
 
     /// <summary>
     /// 状态栏文本。M4 验收要求「注册失败（键位被占）时在状态栏明确告警，列出失败的键」——
     /// 失败必须点名到具体键位，「热键注册失败」这种笼统说法排查不了。
+    /// 清屏降级要额外点明：操作员得知道现在按哪个键清屏。
     /// </summary>
-    public string StatusText => AllSucceeded
-        ? $"热键：{string.Join(" ", Registered)} 已就绪"
-        : $"⚠ 热键 {string.Join(" ", Failed)} 注册失败（被其他程序占用），可用：{(Registered.Count == 0 ? "无" : string.Join(" ", Registered))}";
+    public string StatusText
+    {
+        get
+        {
+            string text = AllSucceeded
+                ? $"热键：{string.Join(" ", Registered)} 已就绪"
+                : $"⚠ 热键 {string.Join(" ", Failed)} 注册失败（被其他程序占用），可用：{(Registered.Count == 0 ? "无" : string.Join(" ", Registered))}";
+
+            return ClearFellBack ? text + $"｜清屏键已自动改用 {ClearKey}" : text;
+        }
+    }
 }
 
 /// <summary>
@@ -52,7 +65,7 @@ public sealed record HotkeyRegistrationResult(
 /// <para><b>L7 —— 这是全项目最危险的一段代码。</b><c>RegisterHotKey</c> 是全局独占：
 /// 注册了哪个键，那个键就**不再传给 WPS**。误注册方向键 = 操作员再也翻不了 PPT。
 /// 所以这里有两道闸：<see cref="HotkeyWhitelist"/> 先把配置里的键名过一遍，
-/// 然后 <see cref="ToVirtualKey"/> 的映射表里**只有那五个键**——
+/// 然后 <see cref="ToVirtualKey"/> 的映射表里**只有 F7–F12 六个键**——
 /// 表里没有的键名根本得不到键码，压根注册不出去。</para>
 /// </remarks>
 internal sealed class GlobalHotkeyService : IDisposable
@@ -87,19 +100,49 @@ internal sealed class GlobalHotkeyService : IDisposable
         TryRegister(2, HotkeyAction.NextPage, config.NextPage, registered, failed);
         TryRegister(3, HotkeyAction.SendZh, config.SendZh, registered, failed);
         TryRegister(4, HotkeyAction.SendEn, config.SendEn, registered, failed);
-        TryRegister(5, HotkeyAction.Clear, config.Clear, registered, failed);
+        bool clearOk = TryRegister(5, HotkeyAction.Clear, config.Clear, registered, failed);
+
+        string? clearKey = clearOk ? HotkeyWhitelist.Canonicalize(config.Clear) : null;
+        bool clearFellBack = false;
+
+        if (!clearOk)
+        {
+            // 清屏是直播中最不能失灵的键，而 F12 恰恰最容易被占——装了 JIT 调试器的
+            // 机器由系统内核保留 F12（AeDebug）。失败就降级到 F11（2026-08-21 经操作员
+            // 批准加入白名单）：与放映键无冲突，且紧挨 F12、肌肉记忆代价最小。
+            const string fallback = "F11";
+
+            bool takenByOthers =
+                string.Equals(HotkeyWhitelist.Canonicalize(config.PrevPage), fallback, StringComparison.Ordinal)
+                || string.Equals(HotkeyWhitelist.Canonicalize(config.NextPage), fallback, StringComparison.Ordinal)
+                || string.Equals(HotkeyWhitelist.Canonicalize(config.SendZh), fallback, StringComparison.Ordinal)
+                || string.Equals(HotkeyWhitelist.Canonicalize(config.SendEn), fallback, StringComparison.Ordinal);
+
+            if (!takenByOthers
+                && !string.Equals(HotkeyWhitelist.Canonicalize(config.Clear), fallback, StringComparison.Ordinal))
+            {
+                AppLog.Warn($"清屏键 {config.Clear} 注册失败，降级尝试 {fallback}——直播中清屏不能没有热键。");
+
+                if (TryRegister(5, HotkeyAction.Clear, fallback, registered, failed))
+                {
+                    clearKey = fallback;
+                    clearFellBack = true;
+                }
+            }
+        }
 
         RegisteredKeys = registered;
 
         AppLog.Info(
             $"全局热键注册完成。已占用：{(registered.Count == 0 ? "无" : string.Join(" ", registered))}；" +
-            $"失败：{(failed.Count == 0 ? "无" : string.Join(" ", failed))}。" +
+            $"失败：{(failed.Count == 0 ? "无" : string.Join(" ", failed))}；" +
+            $"清屏键：{clearKey ?? "无（热键不可用，按钮仍可用）"}。" +
             "方向键 / PgUp / PgDn / Space / Enter / Esc / B / W / F5 未被注册，仍归放映软件。");
 
-        return new HotkeyRegistrationResult(registered, failed);
+        return new HotkeyRegistrationResult(registered, failed, clearKey, clearFellBack);
     }
 
-    private void TryRegister(
+    private bool TryRegister(
         int id,
         HotkeyAction action,
         string keyName,
@@ -113,22 +156,22 @@ internal sealed class GlobalHotkeyService : IDisposable
                 $"拒绝注册「{keyName}」——不在允许的键位内（只许 {HotkeyWhitelist.AllowedList}）。" +
                 "注册放映软件的按键会让操作员无法翻页。");
             failed.Add(keyName);
-            return;
+            return false;
         }
 
-        // 第二道闸：映射表里只有那五个键。
+        // 第二道闸：映射表里只有那六个键。
         uint? vk = ToVirtualKey(keyName);
         if (vk is null)
         {
             AppLog.Error($"键名「{keyName}」没有对应的虚拟键码，跳过。");
             failed.Add(keyName);
-            return;
+            return false;
         }
 
         if (_source is null)
         {
             failed.Add(keyName);
-            return;
+            return false;
         }
 
         bool ok = NativeMethods.RegisterHotKey(
@@ -139,17 +182,19 @@ internal sealed class GlobalHotkeyService : IDisposable
             int error = Marshal.GetLastWin32Error();
             AppLog.Warn($"热键 {keyName} 注册失败（Win32 错误 {error}），可能已被其他程序占用。");
             failed.Add(keyName);
-            return;
+            return false;
         }
 
         _actions[id] = action;
         _registeredIds.Add(id);
         registered.Add(HotkeyWhitelist.Canonicalize(keyName));
+        return true;
     }
 
     /// <summary>
-    /// 键名 → 虚拟键码。**表里只有 F7 F8 F9 F10 F12**，这是有意的（L7）。
-    /// 想加键位必须同时改 <see cref="HotkeyWhitelist"/> 和这里，两处都得过。
+    /// 键名 → 虚拟键码。**表里只有 F7–F12 六个键**，这是有意的（L7，2026-08-21
+    /// 修订加入 F11 作清屏降级键）。想加键位必须同时改
+    /// <see cref="HotkeyWhitelist"/> 和这里，两处都得过。
     /// </summary>
     private static uint? ToVirtualKey(string keyName) =>
         HotkeyWhitelist.Canonicalize(keyName) switch
@@ -158,6 +203,7 @@ internal sealed class GlobalHotkeyService : IDisposable
             "F8" => NativeMethods.VK_F8,
             "F9" => NativeMethods.VK_F9,
             "F10" => NativeMethods.VK_F10,
+            "F11" => NativeMethods.VK_F11,
             "F12" => NativeMethods.VK_F12,
             _ => null,
         };

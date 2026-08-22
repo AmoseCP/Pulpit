@@ -105,7 +105,7 @@ WPF 所需的 VC 运行库随包自解压——目标机只需 Windows 10 x64 (1
 
 | 决策 | 落点 | 怎么被守住 |
 |---|---|---|
-| **L7** 只许注册 F7 F8 F9 F10 F12 | `HotkeyWhitelist` + `GlobalHotkeyService.ToVirtualKey` | 两道闸：白名单过键名，映射表里只有那五个键。加键位必须同时改两处 |
+| **L7** 只许注册 F7–F12 六键（F11 仅作 F12 被占时的清屏降级，2026-08-21 修订） | `HotkeyWhitelist` + `GlobalHotkeyService.ToVirtualKey` | 两道闸：白名单过键名，映射表里只有那六个键。加键位必须同时改两处 |
 | **L8** 送出键不是 Enter | `ControlWindow.xaml` | `AcceptsReturn=False` + **全窗口无任何 `IsDefault="True"` 按钮**。加一个默认按钮就等于把送出键绑回 Enter |
 | **L4** 叠加层从不 Close | `OverlayWindow.OnClosing` | 拦掉一切关闭请求，只有 `AllowCloseOnShutdown()` 之后才放行 |
 

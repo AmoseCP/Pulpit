@@ -24,7 +24,7 @@
 | L4 | `OverlayWindow` 生命周期与进程一致，**从不 Close** | 反复创建窗口会引发 Z 序抖动。"清屏"= 内容置空 + 透明，窗口仍在 |
 | L5 | 扩展样式必须为 `WS_EX_LAYERED \| WS_EX_TRANSPARENT \| WS_EX_TOOLWINDOW \| WS_EX_NOACTIVATE` | 依次实现：透明、鼠标穿透、不进 Alt+Tab、永不获取焦点。`NOACTIVATE` 缺失会导致放映软件误判失焦而退出全屏 |
 | L6 | 2 秒心跳 `SetWindowPos(HWND_TOPMOST, SWP_NOACTIVATE\|SWP_NOMOVE\|SWP_NOSIZE)` | 对抗放映软件的 Z 序抢占。已实测 WPS 不独占全屏，但心跳成本近零，必须保留 |
-| L7 | 全局热键仅注册 **F7 F8 F9 F10 F12** | `RegisterHotKey` 是全局独占，注册即从放映软件手里夺走该键。方向键、PgUp/PgDn、Esc、B、F5 **一律不得注册**，它们属于 PPT |
+| L7 | 全局热键仅注册 **F7–F12 六键**（F11 为 2026-08-21 修订加入，仅作清屏降级，见 §11） | `RegisterHotKey` 是全局独占，注册即从放映软件手里夺走该键。方向键、PgUp/PgDn、Esc、B、F5 **一律不得注册**，它们属于 PPT |
 | L8 | 送出键**不是 Enter** | 中文输入法用 Enter 确认候选词，会导致半截内容上屏。Enter 在输入框内不触发任何投放行为 |
 | L9 | 单语上屏，不做中英双语同屏 | 双语会让字号减半，后排与直播画面都看不清 |
 | L10 | 超长内容按**并节组**分页，一页一节，字号恒定 | 自动缩小字号会造成副屏观感忽大忽小 |
@@ -686,3 +686,14 @@ L3 的「带状区域约 1920×324」（1080 × 0.30 = 324）。
   `python3 tools/build_niv_db.py --src NIV_en.SQLite3 --trans-id 3 --code NIV2011 …`。
   MyBible 标记清洗规则记录在 SCHEMA.md「英文译本」一节。
   源文件与 `tools/build_*_db.py` 均已 gitignore（版权正文不入仓）。`
+
+### 2026-08-21（二）—— F10 语义修订 + L7 修订：F11 入白名单作清屏降级（操作员批准）
+
+| # | 位置 | 原文 | 改为 | 依据 |
+|---|---|---|---|---|
+| 17 | §2 P1-1 | F10 投一次英文（原地换语言/投输入引用，F9 换回中文） | **F10 = 中/英显示语言的全局开关**：切换后屏上经文原地换语言保页位，之后翻页、F9 投放、历史复投全部保持该语言，再按切回。模式为会话级，启动恒中文；对照开启时 F10 提示无效。「F9 永远投中文」的约定作废 | 操作员实测判定旧语义反直觉（v1.3.0 发布） |
+| 18 | §1 L7 | 白名单只许 F7 F8 F9 F10 F12 | 白名单扩为 **F7–F12 六键**。F11 仅用于**清屏降级**：F12 注册失败（装有 JIT 调试器的机器由系统内核保留 F12，AeDebug）时自动改注册 F11，状态栏与清屏按钮文字明示真实键位。F11 不与任何 PPT 放映键冲突，不违背 L7 保护翻页键的初衷 | 操作员批准（2026-08-21）；本机 F12 被占实测诊断 |
+
+实现要点：降级逻辑在 `GlobalHotkeyService.Register`（仅 Clear 动作、仅降 F11、
+且 F11 未被其他动作占用时）；`HotkeyRegistrationResult` 新增 `ClearKey`/`ClearFellBack`，
+App 据此改清屏按钮文字。白名单两道闸（`HotkeyWhitelist` + `ToVirtualKey`）已同步加 F11。

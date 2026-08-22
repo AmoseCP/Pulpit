@@ -185,7 +185,7 @@
                         <StackPanel Orientation="Horizontal" Margin="0,0,0,8">
                             <Button Content="上一页 (F7)" Click="OnPrevPage" MinWidth="104" />
                             <Button Content="下一页 (F8)" Click="OnNextPage" MinWidth="104" />
-                            <Button Content="清屏 (F12)" Click="OnClear" MinWidth="104" />
+                            <Button x:Name="ClearButton" Content="清屏 (F12)" Click="OnClear" MinWidth="104" />
                             <Button x:Name="LanguageButton" Content="英文 (F10)" Click="OnToggleLanguage"
                                     MinWidth="104" Margin="0"
                                     ToolTip="切换全部经文的显示语言（屏上内容、翻页与之后的投放都跟着换），再按切回。按钮文字显示的是按下去会切到的语言。" />
@@ -330,8 +330,11 @@
                         </Grid.RowDefinitions>
 
                         <TextBlock Grid.Row="0" Grid.Column="0" Text="字号上限" VerticalAlignment="Center" Margin="0,0,10,6" />
+                        <!-- 上限 400：全屏模式下 200 仍不够后排看清（2026-08-21 操作员反馈）。
+                             页脚行高随命中字号一起在二分里求解（BandView.FitBody），
+                             上限拉满也不会挤压正文。 -->
                         <Slider x:Name="MaxFontSlider" Grid.Row="0" Grid.Column="1"
-                                Minimum="40" Maximum="200" TickFrequency="10" IsSnapToTickEnabled="True"
+                                Minimum="40" Maximum="400" TickFrequency="10" IsSnapToTickEnabled="True"
                                 VerticalAlignment="Center" Margin="0,0,10,6"
                                 ValueChanged="OnAppearanceValueChanged" />
                         <TextBlock x:Name="MaxFontValue" Grid.Row="0" Grid.Column="2" MinWidth="64"

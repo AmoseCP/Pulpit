@@ -68,6 +68,7 @@ internal static class NativeMethods
     internal const uint VK_F8 = 0x77;
     internal const uint VK_F9 = 0x78;
     internal const uint VK_F10 = 0x79;
+    internal const uint VK_F11 = 0x7A;
     internal const uint VK_F12 = 0x7B;
 
     [DllImport("user32.dll", SetLastError = true)]

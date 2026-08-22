@@ -168,10 +168,11 @@ public sealed class ConfigTests
     [InlineData("F8")]
     [InlineData("F9")]
     [InlineData("F10")]
+    [InlineData("F11")]     // 2026-08-21 L7 修订：清屏降级键（F12 被系统占用的机器）
     [InlineData("F12")]
     [InlineData("f9")]      // 大小写不敏感
     [InlineData(" F9 ")]    // 两端空白
-    public void WhitelistAcceptsOnlyTheFiveFunctionKeys(string key)
+    public void WhitelistAcceptsOnlyTheSixFunctionKeys(string key)
         => Assert.True(HotkeyWhitelist.IsAllowed(key));
 
     /// <summary>
@@ -195,7 +196,7 @@ public sealed class ConfigTests
     [InlineData("W")]
     [InlineData("F5")]
     [InlineData("F1")]
-    [InlineData("F11")]
+    [InlineData("F6")]
     [InlineData("Ctrl+F9")]   // 组合键也不支持——v1 只认裸功能键
     [InlineData("")]
     [InlineData("   ")]
@@ -247,10 +248,11 @@ public sealed class ConfigTests
     }
 
     [Fact]
-    public void WhitelistExposesExactlyFiveKeys()
+    public void WhitelistExposesExactlySixKeys()
     {
-        Assert.Equal(5, HotkeyWhitelist.All.Count);
-        Assert.Equal("F7 F8 F9 F10 F12", HotkeyWhitelist.AllowedList);
+        // F11 是 2026-08-21 的 L7 修订（清屏降级）。再想加键位，先读 DEVELOPMENT_PLAN §1。
+        Assert.Equal(6, HotkeyWhitelist.All.Count);
+        Assert.Equal("F7 F8 F9 F10 F11 F12", HotkeyWhitelist.AllowedList);
     }
 
     // ================= 副屏角标（P2-4）=================

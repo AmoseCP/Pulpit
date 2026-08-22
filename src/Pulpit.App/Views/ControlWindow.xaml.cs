@@ -328,6 +328,15 @@ public partial class ControlWindow : Window
     }
 
     /// <summary>
+    /// 清屏按钮显示真实热键：F12 被占的机器上会降级到 F11（<c>App</c> 注册完成后调用）。
+    /// 两个键都注册不上时只显示「清屏」——按钮本身永远可用。
+    /// </summary>
+    public void SetClearKeyDisplay(string? key)
+    {
+        ClearButton.Content = key is null ? "清屏" : $"清屏 ({key})";
+    }
+
+    /// <summary>
     /// F9/按钮/复投共用的合成入口，按当前状态选路：对照开启走双语（英上中下），
     /// 否则按语言模式投纯英文或纯中文。预览（<see cref="RefreshModeCore"/>）
     /// 用的也是这里——预览里是什么，投出去就是什么。

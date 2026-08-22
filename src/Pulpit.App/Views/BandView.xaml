@@ -20,10 +20,12 @@
             <Grid.RowDefinitions>
                 <RowDefinition Height="*" />
                 <!--
-                  页脚行高由代码写成**固定值**（MaxFontSize × LabelScale × 1.6），
-                  不用 Auto。用 Auto 会形成循环：出处标签字号 = 正文字号的 40%，
-                  而正文字号又由「正文可用高度 = 总高 − 页脚高」二分算出来。
-                  固定预留把这个环打断，正文可用高度与字号无关。
+                  页脚行高由代码写成**像素值**（FitBody 收敛后按命中字号算，见
+                  ApplyFit/FooterHeight），不用 Auto。用 Auto 会形成布局循环：
+                  出处标签字号 = 正文字号的 40%，而正文字号又由「正文可用高度 =
+                  总高 − 页脚高」二分算出来。页脚高度改为在二分的高度预算里
+                  一起求解——挂在 MaxFontSize 上的旧做法会让「字号上限往右拖、
+                  字反而变小」（预留随上限膨胀挤压正文，真机实测抓出）。
                 -->
                 <RowDefinition x:Name="FooterRow" Height="0" />
             </Grid.RowDefinitions>

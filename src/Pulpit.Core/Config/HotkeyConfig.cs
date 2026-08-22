@@ -64,7 +64,10 @@ public sealed record HotkeyConfig
 /// </remarks>
 public static class HotkeyWhitelist
 {
-    private static readonly string[] Allowed = ["F7", "F8", "F9", "F10", "F12"];
+    // F11 于 2026-08-21 经操作员批准加入（L7 修订，DEVELOPMENT_PLAN §11）：
+    // 它是 F12 被占（装了 JIT 调试器的机器由系统内核保留 F12）时清屏键的降级目标，
+    // 与任何 PPT 放映键无冲突。
+    private static readonly string[] Allowed = ["F7", "F8", "F9", "F10", "F11", "F12"];
 
     /// <summary>供报错文案使用的可读列表。</summary>
     public static string AllowedList => string.Join(" ", Allowed);

@@ -18,6 +18,7 @@ public partial class BandView : System.Windows.Controls.UserControl
 {
     private OverlayTheme? _theme;
     private bool _fitting;
+    private bool _footerVisible;
 
     public BandView()
     {
@@ -108,15 +109,28 @@ public partial class BandView : System.Windows.Controls.UserControl
         LabelText.Text = bilingual ? string.Empty : page.Label;
         IndicatorText.Text = indicator;
 
-        bool hasFooter = LabelText.Text.Length > 0 || indicator.Length > 0;
+        _footerVisible = LabelText.Text.Length > 0 || indicator.Length > 0;
 
-        // 固定预留高度，不用 Auto——理由见 XAML 里的注释（打断字号↔行高的循环依赖）。
-        FooterRow.Height = new GridLength(
-            hasFooter ? Math.Ceiling(_theme.MaxFontSize * _theme.LabelScale * 1.6) : 0);
-
-        // 行高固定预留后，BodyHost 的高度与字号无关，可以直接同步布局再二分。
         BandPadding.UpdateLayout();
         FitBody();
+    }
+
+    /// <summary>
+    /// 页脚行高：**实际命中字号**对应的一行出处小字的高度。
+    /// 由 <see cref="FitBody"/> 在二分收敛后写入——页脚参与二分的高度预算
+    /// （见 <see cref="FooterHeight"/>），所以它不挂在 MaxFontSize 上：
+    /// 挂上限会让「上限往右拖 → 预留变大 → 正文反而变小」（真机实测的先大后小）。
+    /// 仍然不用 Auto：Auto 才会形成布局层面的字号↔行高循环。
+    /// </summary>
+    private double FooterHeight(double bodySize)
+    {
+        if (!_footerVisible)
+        {
+            return 0;
+        }
+
+        double labelSize = Math.Max(1, bodySize * _theme!.LabelScale);
+        return Math.Ceiling(labelSize * OverlayTheme.LineHeightFactor);
     }
 
     /// <summary>内边距按带状区域尺寸的百分比算：横向吃宽度，纵向吃高度。</summary>
@@ -166,9 +180,13 @@ public partial class BandView : System.Windows.Controls.UserControl
         }
 
         double availableWidth = BodyHost.ActualWidth;
-        double availableHeight = BodyHost.ActualHeight;
 
-        if (availableWidth <= 1 || availableHeight <= 1)
+        // 高度预算是「正文区 + 当前页脚行」的总和——这个和不随页脚怎么分配而变
+        // （Grid 星号行 + 固定行），所以本方法收敛后把页脚行改成命中字号对应的高度，
+        // 触发的第二次 FitBody 会算出完全相同的结果，一次即稳，不会振荡。
+        double totalHeight = BodyHost.ActualHeight + FooterRow.Height.Value;
+
+        if (availableWidth <= 1 || totalHeight <= 1)
         {
             return;
         }
@@ -185,24 +203,27 @@ public partial class BandView : System.Windows.Controls.UserControl
             double max = _theme.MaxFontSize;
             double min = _theme.MinFontSize;
 
-            if (MeasureStackHeight(max, availableWidth) <= availableHeight)
+            bool Fits(double size) =>
+                MeasureStackHeight(size, availableWidth) + FooterHeight(size) <= totalHeight;
+
+            if (Fits(max))
             {
                 // 短内容走这条：字号被 MaxFontSize 限制，不会撑满整条带（M2 验收）。
-                SetFontSizes(max);
+                ApplyFit(max);
                 return;
             }
 
-            if (MeasureStackHeight(min, availableWidth) > availableHeight)
+            if (!Fits(min))
             {
                 // 连下限都放不下。宁可用下限（会被 ClipToBounds 裁掉尾部）也不再缩，
                 // 缩到看不见等于没投。这种情况该在日志里留痕。
-                SetFontSizes(min);
+                ApplyFit(min);
 
                 if (LogOverflow)
                 {
                     int length = BodyText.Text.Length + SecondaryText.Text.Length;
                     AppLog.Warn(
-                        $"正文在最小字号 {min} 下仍超出带状区域（{availableWidth:F0}×{availableHeight:F0}），" +
+                        $"正文在最小字号 {min} 下仍超出带状区域（{availableWidth:F0}×{totalHeight:F0}），" +
                         $"内容 {length} 字，尾部会被裁切。");
                 }
 
@@ -217,7 +238,7 @@ public partial class BandView : System.Windows.Controls.UserControl
             {
                 double mid = (lo + hi) / 2;
 
-                if (MeasureStackHeight(mid, availableWidth) <= availableHeight)
+                if (Fits(mid))
                 {
                     lo = mid;
                 }
@@ -227,12 +248,19 @@ public partial class BandView : System.Windows.Controls.UserControl
                 }
             }
 
-            SetFontSizes(lo);
+            ApplyFit(lo);
         }
         finally
         {
             _fitting = false;
         }
+    }
+
+    /// <summary>套用命中的字号，并把页脚行高改成该字号对应的一行小字高度。</summary>
+    private void ApplyFit(double bodySize)
+    {
+        SetFontSizes(bodySize);
+        FooterRow.Height = new GridLength(FooterHeight(bodySize));
     }
 
     /// <summary>
@@ -309,6 +337,8 @@ public partial class BandView : System.Windows.Controls.UserControl
         SecondaryLabelText.LineHeight = labelLineHeight;
         BodyLabelText.FontSize = labelSize;
         BodyLabelText.LineHeight = labelLineHeight;
+
+        // 页脚行高由 ApplyFit 按同一个 labelSize 写入，字号与行高天然匹配，无需封顶。
         LabelText.FontSize = labelSize;
         IndicatorText.FontSize = labelSize;
     }
