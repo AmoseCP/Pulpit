@@ -224,7 +224,8 @@ public partial class App : System.Windows.Application
                 break;
 
             case HotkeyAction.SendEn:
-                _control.SendEnglish();
+                // 2026-08-21 语义修订：F10 是中/英显示语言的全局切换，不再是「投一次英文」。
+                _control.ToggleLanguage();
                 break;
 
             case HotkeyAction.PrevPage:

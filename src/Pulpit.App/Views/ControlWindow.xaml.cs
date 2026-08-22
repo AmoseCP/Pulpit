@@ -56,10 +56,12 @@ public partial class ControlWindow : Window
     private bool _loadingTranslations = true;
 
     /// <summary>
-    /// 副屏当前内容所用的译本。原文/清洗版切换要**原地重投**（P1-4），
-    /// 重投必须沿用屏上正在显示的语言——否则英文经文一切换正文来源就变回中文。
+    /// 经文显示语言的**全局开关**（2026-08-21 语义修订：F10 从「投一次英文」改为
+    /// 模式切换）。true = 英文模式：屏上内容、翻页、之后的每次 F9 投放都是英文，
+    /// 直到再按 F10 切回。会话级状态，启动恒为中文——直播开场不该继承上周的模式。
+    /// 对照开启时本开关不参与（对照本来就两种语言都在屏上）。
     /// </summary>
-    private int _activeTransId = 1;
+    private bool _englishMode;
     private readonly DispatcherTimer _poll;
     private readonly Stopwatch _uptime = Stopwatch.StartNew();
     private readonly long _baselineWorkingSet;
@@ -122,6 +124,7 @@ public partial class ControlWindow : Window
 
         RawTextToggle.IsChecked = _useRawText;
         LoadTranslationControls();
+        UpdateLanguageButton();
         RefreshHistory();
         LoadAppearanceControls();
 
@@ -275,18 +278,16 @@ public partial class ControlWindow : Window
     }
 
     /// <summary>
-    /// F10 英文投放（P1-1）。两条路径，按副屏状态自动选：
+    /// F10：中/英显示语言的全局切换（2026-08-21 语义修订，替代旧的「投一次英文」）。
     /// </summary>
     /// <remarks>
-    /// <list type="number">
-    /// <item><b>原地换语言</b>：副屏正在显示经文时，把同一处引用重查成英文并保持当前页位。
-    ///   讲道中最常见的动作是「中文投完了，补一版英文」，所以这条优先。</item>
-    /// <item><b>从输入投放</b>：副屏为空（或显示的是歌词/自由文本）时，投放输入框里的引用。</item>
-    /// </list>
-    /// <para>换回中文按 F9（重投输入）。库里没有英文译本时保持 P0-9 的占位提示——
-    /// 键位永远存在，志愿者的肌肉记忆从 v1 起就是对的。</para>
+    /// 切换的是**模式**，不是某一次投放：副屏正显示经文就原地换语言并保持页位，
+    /// 之后的翻页、F9 投放、历史复投全部跟着当前模式走，直到再按 F10 切回。
+    /// 旧语义（F10 投一次英文、下一动作变回中文）在实际使用中被判定为反直觉。
+    /// <para>库里没有英文译本时保持 P0-9 的占位提示——键位永远存在。
+    /// 对照开启时提示无效：对照本来就两种语言都在屏上。</para>
     /// </remarks>
-    public void SendEnglish()
+    public void ToggleLanguage()
     {
         if (_english is null)
         {
@@ -295,75 +296,56 @@ public partial class ControlWindow : Window
             return;
         }
 
-        if (IsComposing)
+        if (_bilingual)
         {
-            // 与 F9 同一个道理（L8）：组合中 InputBox.Text 是半成品，宁可不投。
-            ShowMode("输入法正在组合候选词，请先确认后再送出", ModeLevel.Warning);
-            AppLog.Info("英文投放被拒：输入法组合中。");
+            ShowMode("中英对照已开启，屏上已同时有中英文；要纯英文请先取消对照", ModeLevel.Hint);
             return;
         }
 
-        bool inPlace = _overlay.IsContentVisible
-            && _overlay.CurrentContent is { Kind: ContentKind.Scripture }
-            && _lastSentInput is not null;
+        _englishMode = !_englishMode;
+        AppLog.Info($"经文语言切换为{(_englishMode ? $"英文（{_english.Code}）" : "中文")}。");
 
-        string input = inPlace ? _lastSentInput! : InputBox.Text;
+        UpdateLanguageButton();
+        RefreshModeCore();
+        RefreshPendingPreview();
+        ReprojectPreservingPage();
+        RefreshStatusBar();
 
-        ComposeResult result = _composer.Compose(input, _useRawText, _english.Id);
-
-        if (result.HasError)
-        {
-            // 英文的空档是常态（NIV 把 16 节归入脚注、个别章节号与中文有出入），
-            // 报错点名「英文」，操作员才知道中文版仍然投得出来。
-            ShowMode($"✗ 英文（{_english.Code}）：{result.Error}", ModeLevel.Error);
-            AppLog.Info($"英文投放被拒：{input} → {result.Error}");
-            return;
-        }
-
-        if (result.IsEmpty)
-        {
-            ShowMode("没有可投放的内容", ModeLevel.Hint);
-            return;
-        }
-
-        DisplayContent content = result.Content!;
-
-        if (content.Kind != ContentKind.Scripture)
-        {
-            // 自由文本没有「英文版」，F10 对它无事可做——静默换语言只会让人以为按键失灵。
-            ShowMode("F10 只投放经文的英文版，当前输入不是经文引用", ModeLevel.Warning);
-            return;
-        }
-
-        if (inPlace)
-        {
-            // 保持页位（与 P1-4 的原地重投同理）。中英分页数可能不同——
-            // 中文并节组一页、英文逐节一页（如诗 8:6-8），夹到末页即可。
-            int page = _overlay.CurrentContent?.Index ?? 0;
-            content.Index = Math.Min(page, Math.Max(0, content.PageCount - 1));
-        }
-
-        _lastSentInput = input;
-        _activeTransId = _english.Id;
-        _overlay.Show(content);
-
-        ShowMode($"英文经文 → {string.Join(" + ", content.SourceLabels)}（F9 换回中文）", ModeLevel.Scripture);
-        AppLog.Info($"英文投放（{_english.Code}）：{input}（{content.PageCount} 页）");
-
-        RefreshDiagnostics();
+        // 最后再写模式行，别被 RefreshModeCore 的输入判定盖掉。
+        ShowMode(
+            _englishMode
+                ? $"经文语言 → 英文（{_english.Code}）。屏上与之后投放的经文都用英文，F10 切回中文"
+                : "经文语言 → 中文",
+            ModeLevel.Scripture);
     }
 
-    private void OnSendEnglish(object sender, RoutedEventArgs e) => SendEnglish();
+    private void OnToggleLanguage(object sender, RoutedEventArgs e) => ToggleLanguage();
+
+    /// <summary>F10 按钮的文字随模式变：始终显示「按下去会切到哪种语言」。</summary>
+    private void UpdateLanguageButton()
+    {
+        LanguageButton.Content = _englishMode ? "中文 (F10)" : "英文 (F10)";
+    }
 
     /// <summary>
-    /// F9/按钮的主语言合成：对照开启且有英文译本时走双语（英上中下），否则纯中文。
-    /// 两种结果的 <c>_activeTransId</c> 都记 1——「1」在本类里的含义是
-    /// 「以中文为主的那种显示」，原地重投（<see cref="ReprojectPreservingPage"/>）据此选路。
+    /// F9/按钮/复投共用的合成入口，按当前状态选路：对照开启走双语（英上中下），
+    /// 否则按语言模式投纯英文或纯中文。预览（<see cref="RefreshModeCore"/>）
+    /// 用的也是这里——预览里是什么，投出去就是什么。
     /// </summary>
-    private ComposeResult ComposePrimary(string input) =>
-        _bilingual && _english is not null
-            ? _composer.ComposeBilingual(input, _useRawText, _english.Id)
-            : _composer.Compose(input, _useRawText);
+    private ComposeResult ComposePrimary(string input)
+    {
+        if (_english is null)
+        {
+            return _composer.Compose(input, _useRawText);
+        }
+
+        if (_bilingual)
+        {
+            return _composer.ComposeBilingual(input, _useRawText, _english.Id);
+        }
+
+        return _composer.Compose(input, _useRawText, _englishMode ? _english.Id : 1);
+    }
 
     private void Send(string input)
     {
@@ -372,7 +354,12 @@ public partial class ControlWindow : Window
         if (result.HasError)
         {
             // P0-10：报错只出现在控制窗口，副屏保持原状，绝不上副屏。
-            ShowMode("✗ " + result.Error, ModeLevel.Error);
+            // 英文模式点名「英文」——空档是常态（NIV 把 16 节归入脚注），
+            // 操作员得知道中文版仍然投得出来。
+            string prefix = _englishMode && !_bilingual && _english is not null
+                ? $"英文（{_english.Code}）："
+                : string.Empty;
+            ShowMode("✗ " + prefix + result.Error, ModeLevel.Error);
             AppLog.Info($"投放被拒：{input} → {result.Error}");
             return;
         }
@@ -386,7 +373,6 @@ public partial class ControlWindow : Window
         DisplayContent content = result.Content!;
 
         _lastSentInput = input;
-        _activeTransId = 1;   // F9/按钮永远投中文；英文只从 F10 进（P1-1）
         _overlay.Show(content);
         AppLog.Info($"投放：{input}（{content.Kind}，{content.PageCount} 页）");
 
@@ -603,11 +589,9 @@ public partial class ControlWindow : Window
 
         int page = _overlay.CurrentContent?.Index ?? 0;
 
-        // 沿用屏上正在显示的译本（P1-1）：英文经文切原文/清洗版不该悄悄变回中文。
-        // _activeTransId == 1 表示「以中文为主的显示」，此时要连对照状态一起沿用。
-        ComposeResult result = _activeTransId == 1
-            ? ComposePrimary(_lastSentInput)
-            : _composer.Compose(_lastSentInput, _useRawText, _activeTransId);
+        // 按当前状态（语言模式 + 对照 + 正文来源）重投——语言是全局模式，
+        // 切原文/清洗版或换译本都不会让屏上的语言悄悄漂移。
+        ComposeResult result = ComposePrimary(_lastSentInput);
 
         if (!result.HasContent)
         {
@@ -684,15 +668,10 @@ public partial class ControlWindow : Window
         RefreshStatusBar();
         RefreshMode();   // 待投放预览的英文行要跟着换版本
 
-        if (_activeTransId != 1)
+        if (_englishMode || _bilingual)
         {
-            // 副屏正显示纯英文：跟着换版本。
-            _activeTransId = selected.Id;
-            ReprojectPreservingPage();
-        }
-        else if (_bilingual)
-        {
-            // 对照显示中：英文行跟着换版本。纯中文显示不重投，重投只是无谓的闪动。
+            // 屏上内容含英文（纯英文模式或对照）：跟着换版本。
+            // 纯中文显示不重投，重投只是无谓的闪动。
             ReprojectPreservingPage();
         }
     }
@@ -707,12 +686,9 @@ public partial class ControlWindow : Window
         AppLog.Info($"中英对照{(_bilingual ? "开启（英上中下）" : "关闭")}。");
 
         EnglishSettingsChanged?.Invoke(this, EventArgs.Empty);
+        UpdateLanguageButton();
         RefreshMode();   // 待投放预览要跟着切换对照形态
-
-        if (_activeTransId == 1)
-        {
-            ReprojectPreservingPage();
-        }
+        ReprojectPreservingPage();
     }
 
     private void OnSample(object sender, RoutedEventArgs e)
@@ -1474,7 +1450,8 @@ public partial class ControlWindow : Window
         StatusDatabase.Text = !_composer.ScriptureAvailable
             ? "库：不可用"
             : $"库：CUV{(_english is null ? string.Empty : "+" + _english.Code)}"
-              + $" v{_databaseVersion ?? "?"}{(_useRawText ? "（原文）" : string.Empty)}";
+              + $" v{_databaseVersion ?? "?"}{(_useRawText ? "（原文）" : string.Empty)}"
+              + (_englishMode && !_bilingual ? "｜语言：英文" : string.Empty);
 
         StatusIme.Text = IsComposing ? "输入法：组合中" : "输入法：待机";
         StatusHotkeys.Text = HotkeyStatus;
